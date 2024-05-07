@@ -1,0 +1,10 @@
+# 2024-04-06: I added all key-value pairs from the platform.txt that run the python command and repalced it with my own (non-system) python:
+
+tools.esptool_py.network_cmd=/home/shaun/miniconda3/envs/arduino_env/bin/python "{runtime.platform.path}/tools/espota.py" -r
+tools.esp_ota.cmd=/home/shaun/miniconda3/envs/arduino_env/bin/python "{runtime.platform.path}/tools/espota.py" -r
+tools.gen_esp32part.cmd=/home/shaun/miniconda3/envs/arduino_env/bin/python "{runtime.platform.path}/tools/gen_esp32part.py"
+tools.gen_insights_pkg.cmd=/home/shaun/miniconda3/envs/arduino_env/bin/python "{runtime.platform.path}"/tools/gen_insights_package.py
+recipe.objcopy.bin.pattern.linux=/home/shaun/miniconda3/envs/arduino_env/bin/python "{tools.esptool_py.path}/{tools.esptool_py.cmd}" {recipe.objcopy.bin.pattern_args}
+tools.esptool_py.upload.pattern.linux=/home/shaun/miniconda3/envs/arduino_env/bin/python "{path}/{cmd}" {upload.pattern_args}
+tools.esptool_py.program.pattern.linux=/home/shaun/miniconda3/envs/arduino_env/bin/python "{path}/{cmd}" {program.pattern_args}
+tools.esptool_py.erase.pattern.linux=/home/shaun/miniconda3/envs/arduino_env/bin/python "{path}/{cmd}" {erase.pattern_args}
