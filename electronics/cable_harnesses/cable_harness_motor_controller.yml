@@ -13,15 +13,26 @@ connectors:
     type: JST-XH 6 pin    # connector type G2. Connects cable to the ESP32 board
     subtype: male
     pinlabels: [MOTOR_1_DIR, MOTOR_2_DIR, MOTOR_1_FAULT, MOTOR_2_FAULT, MOTOR_1_PWM, MOTOR_2_PWM]
+  X:                    # a fake connector as a hack, just to allow wireviz to connect wire bundles to one another without a connector in between
+    style: simple
+    autogenerate: true
+    type: ""
+    ignore_in_bom: true
 
 cables:
   W1:       # cable harness 1a
     gauge: 0.25 mm2
     length: 0.2
     color_code: DIN
-    wirecount: 4
+    wirecount: 10
     shield: false
   W2:       # cable harness 1b
+    gauge: 0.25 mm2
+    length: 0.2
+    color_code: DIN
+    wirecount: 4
+    shield: false
+  W3:       # cable harness 1c
     gauge: 0.25 mm2
     length: 0.2
     color_code: DIN
@@ -31,9 +42,14 @@ cables:
 connections:
   -
     - X1: [2, 6, 15, 16]
-    - W1: [1,2,3,4]
-    - X2: [1,2,3,4]
+    - W1: [1-4]
+    - [X,X,X,X]             # fake connectors for the sake of wireviz
+    - W2: [1-4]
+    - X2: [1-4]
   -
     - X1: [18, 22, 29, 31, 32, 33]
-    - W2: [1,2,3,4,5,6]
-    - X3: [1,2,3,4,5,6]
+    - W1: [5-10]
+    - [X,X,X,X,X,X]         # fake connectors for the sake of wireviz
+    - W3: [1-6]
+    - X3: [1-6]
+
