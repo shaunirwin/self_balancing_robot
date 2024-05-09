@@ -1,0 +1,23 @@
+connectors:
+  X1:
+    type: JST SM 4 pin      # connector type D. Connects to motor encoder cable to cable
+    subtype: male
+    pinlabels: [ENCODER_A_OUTPUT, ENCODER_B_OUTPUT, ENCODER_VCC, ENCODER_GND]       # ENCODER_VCC: 3.3V-24V
+  X2:
+    type: JST 4 pin    # connector type K. Connects cable to the ESP32 board
+    subtype: female
+    pinlabels: [ENCODER_A_OUTPUT, ENCODER_B_OUTPUT, ENCODER_VCC, ENCODER_GND]
+
+cables:
+  W1:       # cable harness 2
+    gauge: 0.25 mm2
+    length: 0.2
+    color_code: DIN
+    wirecount: 4
+    shield: false
+
+connections:
+  -
+    - X1: [1,2,3,4]
+    - W1: [1,2,3,4]
+    - X2: [1,2,3,4]
