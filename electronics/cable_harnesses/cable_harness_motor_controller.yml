@@ -6,20 +6,34 @@ connectors:
     pins: [2, 6, 15, 16, 18, 22, 29, 31, 32, 33]
     pinlabels: [5V, GND, MOTOR_1_SLEEP,  MOTOR_2_SLEEP, MOTOR_1_DIR, MOTOR_2_DIR, MOTOR_1_FAULT, MOTOR_2_FAULT, MOTOR_1_PWM, MOTOR_2_PWM]
   X2:
-    type: to_decide_10_pins_minimum    # connector type G. Connects cable to the ESP32 board
+    type: JST-XH 4 pin    # connector type G1. Connects cable to the ESP32 board
     subtype: male
-    pinlabels: [5V, GND, MOTOR_1_SLEEP,  MOTOR_2_SLEEP, MOTOR_1_DIR, MOTOR_2_DIR, MOTOR_1_FAULT, MOTOR_2_FAULT, MOTOR_1_PWM, MOTOR_2_PWM]
+    pinlabels: [5V, GND, MOTOR_1_SLEEP,  MOTOR_2_SLEEP]
+  X3:
+    type: JST-XH 6 pin    # connector type G2. Connects cable to the ESP32 board
+    subtype: male
+    pinlabels: [MOTOR_1_DIR, MOTOR_2_DIR, MOTOR_1_FAULT, MOTOR_2_FAULT, MOTOR_1_PWM, MOTOR_2_PWM]
 
 cables:
-  W1:       # cable harness 1
+  W1:       # cable harness 1a
     gauge: 0.25 mm2
     length: 0.2
     color_code: DIN
-    wirecount: 10
+    wirecount: 4
+    shield: false
+  W2:       # cable harness 1b
+    gauge: 0.25 mm2
+    length: 0.2
+    color_code: DIN
+    wirecount: 6
     shield: false
 
 connections:
   -
-    - X1: [2, 6, 15, 16, 18, 22, 29, 31, 32, 33]
-    - W1: [1,2,3,4,5,6,7,8,9,10]
-    - X2: [1,2,3,4,5,6,7,8,9,10]
+    - X1: [2, 6, 15, 16]
+    - W1: [1,2,3,4]
+    - X2: [1,2,3,4]
+  -
+    - X1: [18, 22, 29, 31, 32, 33]
+    - W2: [1,2,3,4,5,6]
+    - X3: [1,2,3,4,5,6]
