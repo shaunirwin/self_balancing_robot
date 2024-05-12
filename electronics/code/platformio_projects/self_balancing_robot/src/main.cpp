@@ -160,36 +160,53 @@ const int resolution = 8;         // set PWM resolution
 
 const int motor1SleepPin = 47;
 const int motor1DirPin = 48;
+const int encoder1APin = 11;
+const int encoder1BPin = 12;
+
+bool dirDrive = true;
+const bool MOTOR_FORWARD = true;
+
+// measured values
+volatile long motor1Position = 0;
+volatile bool motor1Dir = true;
+
+void updateMotor1Position(){
+  if (digitalRead(encoder1BPin) != digitalRead(encoder1APin)) {
+    motor1Position ++;
+    motor1Dir = MOTOR_FORWARD;
+  }
+  else {
+    motor1Position --;
+    motor1Dir = !MOTOR_FORWARD;
+  }
+
+  digitalWrite(ledPWMPin, motor1Dir);
+}
  
 void setup(){
   pinMode(motor1SleepPin, OUTPUT);
   pinMode(motor1DirPin, OUTPUT);
+  pinMode(ledPWMPin, OUTPUT);
 
   ledcSetup(motor1PWMChannel, freq, resolution);  // define the PWM Setup
   ledcAttachPin(motor1PWMPin, motor1PWMChannel);
-  ledcAttachPin(ledPWMPin, motor1PWMChannel);
+  //ledcAttachPin(ledPWMPin, motor1PWMChannel);
+
+  attachInterrupt(digitalPinToInterrupt(encoder1APin), updateMotor1Position, CHANGE);
 }
+
+
  
 void loop(){
     digitalWrite(motor1SleepPin, HIGH);     // inveted, so HIGH should be not sleeping/coasting?
-    digitalWrite(motor1DirPin, HIGH);
+    digitalWrite(motor1DirPin, dirDrive);
 
     ledcWrite(motor1PWMChannel, 0);        // set the Duty cycle out of 255
     delay(1000);
-    ledcWrite(motor1PWMChannel, 30);
+    ledcWrite(motor1PWMChannel, 50);
     delay(1000);
-    ledcWrite(motor1PWMChannel, 60);
+    ledcWrite(motor1PWMChannel, 80);
     delay(1000);
-    ledcWrite(motor1PWMChannel, 90);
-    delay(1000);
-    ledcWrite(motor1PWMChannel, 120);
-    delay(1000);
-    ledcWrite(motor1PWMChannel, 150);
-    delay(1000);
-    ledcWrite(motor1PWMChannel, 180);
-    delay(1000);
-    ledcWrite(motor1PWMChannel, 210);
-    delay(1000);
-    ledcWrite(motor1PWMChannel, 240);
-    delay(1000);
+
+    dirDrive = !dirDrive;
 }

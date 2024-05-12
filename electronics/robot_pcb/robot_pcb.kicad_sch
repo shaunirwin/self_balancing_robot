@@ -3326,7 +3326,7 @@
 			)
 		)
 		(property "Value" "Conn_01x04_Socket encoder 2 input"
-			(at 79.502 125.73 0)
+			(at 83.312 125.476 0)
 			(effects
 				(font
 					(size 1.27 1.27)
