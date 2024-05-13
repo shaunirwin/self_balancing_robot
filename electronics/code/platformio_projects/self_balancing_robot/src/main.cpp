@@ -200,7 +200,15 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(encoder1APin), updateMotor1Position, CHANGE);
 }
 
+// serial tx control characters
+const char STX = '!'; //'\x002';   // start of frame
+const char ETX = '@'; //'\x003';   // end of frame
 
+struct pointInt {
+   int x;
+   int y;
+   int z;
+};
  
 void loop(){
     digitalWrite(motor1SleepPin, HIGH);     // inveted, so HIGH should be not sleeping/coasting?
@@ -214,4 +222,11 @@ void loop(){
     // delay(1000);
 
     // dirDrive = !dirDrive;
+
+    //Serial.write((uint8_t)(ax >> 8)); Serial.write((uint8_t)(ax & 0xFF)); Serial.write((uint8_t)('\r')); Serial.write((uint8_t)('\n'));
+    struct pointInt data = { 356726, 57, -15675 };
+    Serial.write(STX);
+    Serial.write( (uint8_t *) &data, sizeof( data ) );
+    Serial.write(ETX);
+    delay(50);
 }
