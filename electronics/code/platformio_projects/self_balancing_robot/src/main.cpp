@@ -1,41 +1,5 @@
 #include <Arduino.h>
 
-// // put function declarations here:
-// int myFunction(int, int);
-
-// void setup() {
-//   // put your setup code here, to run once:
-//   int result = myFunction(2, 3);
-// }
-
-// void loop() {
-//   // put your main code here, to run repeatedly:
-// }
-
-// // put function definitions here:
-// int myFunction(int x, int y) {
-//   return x + y;
-// }
-
-
-
-// #define LED_BUILTIN  2
-// // the setup function runs once when you press reset or power the board
-// void setup() {
-//   // initialize digital pin LED_BUILTIN as an output.
-//   pinMode(LED_BUILTIN, OUTPUT);
-// }
-
-// // the loop function runs over and over again forever
-// void loop() {
-//   digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-//   delay(40);                       // wait for a second
-//   digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
-//   delay(40);                       // wait for a second
-// }
-
-
-
 // // forward declaration
 // void toggleLED(void* parameter);
 
@@ -94,61 +58,6 @@
 
 
 
-// // #include <Wire.h>
-
-// // const int sda_pin = 21; // GPIO21 as I2C SDA (this is the default for ESP32 devices)
-// // const int scl_pin = 20; // GPIO17 as I2C SCL (GPIO22 is the default)
-
-// void setup()
-// {
-//     // Wire.setPins(sda_pin, scl_pin); // Set the I2C pins before begin
-//     // Wire.begin(); // join i2c bus (address optional for master)
-//     Serial.begin(9600);  // start serial for output
-// }
-
-
-// void loop() {
-//   while(1) {
-//     // // must insure increment is atomic
-//     // // in case of context switch for print
-//     // noInterrupts();
-//     // count++;
-//     // interrupts();
-//   }
-// }
-
-
-
-
-
-
-
-
-// String inputString = "";      //a String to hold incoming data
-// bool stringComplete = false;  // whether the string is complete
-
-// void setup() {
-//   Serial.begin(115200);
-//   Serial.println(String("\nESP32S3 initialization completed!\r\n")
-//                 + String("Please input some characters,\r\n")
-//                 + String("select \"Newline\" below and Ctrl + Enter to send message to ESP32S3. \r\n"));
-// }
-
-// void loop() {
-//   if (Serial.available()) {         // judge whether data has been received
-//     char inChar = Serial.read();         // read one character
-//     inputString += inChar;
-//     if (inChar == '\n') {
-//       stringComplete = true;
-//     }
-//   }
-//   if (stringComplete) {
-//     Serial.printf("inputString: %s \r\n", inputString);
-//     inputString = "";
-//     stringComplete = false;
-//   }
-// }
-
 
 
 
@@ -167,6 +76,8 @@ const bool MOTOR_FORWARD = true;
 
 bool dirDrive = true;
 bool ledStatus = true;
+
+int16_t ax = 314;
 
 // measured values
 volatile long motor1Position = 0;
@@ -189,6 +100,8 @@ void updateMotor1Position(){
 }
  
 void setup(){
+  Serial.begin(115200);
+
   pinMode(motor1SleepPin, OUTPUT);
   pinMode(motor1DirPin, OUTPUT);
   pinMode(ledPWMPin, OUTPUT);
@@ -203,6 +116,12 @@ void setup(){
 // serial tx control characters
 const char STX = '!'; //'\x002';   // start of frame
 const char ETX = '@'; //'\x003';   // end of frame
+
+struct point {
+   uint8_t x;
+   uint8_t y;
+   uint8_t z;
+};
 
 struct pointInt {
    int x;
