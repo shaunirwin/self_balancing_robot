@@ -1,6 +1,7 @@
 import serial
 import struct
 import numpy as np
+from enum import Enum
 
 ser = serial.Serial(port='/dev/ttyACM0',
     baudrate=115200,
@@ -20,6 +21,18 @@ accel_range = 2     # +-2g
 gyro_range = 250    # +- 250 deg/sec
 accel_resolution = accel_range / 16384.0
 gyro_resolution = gyro_range / 16384.0
+imu_sample_freq = 250   # Hz
+
+gyro_raw_hist = []      # store initial guro values to calculate offset
+gyro_offset = [0, 0, 0]
+
+#class GyroState(Enum):
+#    STORING_CALIB_VALUES = 1
+#    CALCULATE_OFFSET = 2
+#    CALIBRATED = 3
+
+#gyro_state = GyroState.STORING_CALIB_VALUES
+gyro_is_calibrated = False
 
 while True:
     try:
@@ -48,8 +61,19 @@ while True:
         accel_xyz = [v * accel_resolution/2 for v in accel_raw]     # m/s^2
         gyro_xyz = [v * gyro_resolution/2 for v in gyro_raw]        # deg/sec
         pitch_angle_accel = np.arctan2(accel_xyz[0], accel_xyz[2])  # rad
-        #print(accel_xyz, gyro_xyz, pitch_angle_accel*180/np.pi) #, msg)#, ser_bytes.decode("utf-8"))
-        print(f'pitch angle [deg]: {pitch_angle_accel*180/np.pi:.2f}')
+        pitch_angle_gyro = 0    # rad
+        
+        if not gyro_is_calibrated: #gyro_state == GyroState.STORING_CALIB_VALUES:
+            if len(gyro_raw_hist) < imu_sample_freq:
+                gyro_raw_hist.append(gyro_xyz)
+                
+            if len(gyro_raw_hist) == imu_sample_freq:
+                gyro_offset = list(np.mean(gyro_raw_hist, axis=0))
+                print('calculated gyro offset:', gyro_offset)
+                gyro_is_calibrated = True
+                #exit(0)
+        print(accel_xyz, gyro_xyz, pitch_angle_accel*180/np.pi) #, msg)#, ser_bytes.decode("utf-8"))
+        #print(f'pitch angle [deg]: {pitch_angle_accel*180/np.pi:.2f}')
     except:
         print("Keyboard Interrupt")
         
