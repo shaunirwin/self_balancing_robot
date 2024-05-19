@@ -9,7 +9,12 @@ ser = serial.Serial(port='/dev/ttyACM0',
 
 ser.reset_input_buffer()
 
-msg_format = '<hhhhhh'
+receive_raw_imu_data = False
+
+if receive_raw_imu_data:
+    msg_format = '<hhhhhh'      # imu raw data
+else:
+    msg_format = '<fff'      # state estimate data
 msg_size = struct.calcsize(msg_format)        # accel {x,y,z}, gyro {x,y,z}
 print('struct is this size [bytes]:', msg_size)
 
@@ -52,31 +57,37 @@ while True:
             continue
             
         #print('valid packet received!')
-
-        data_unpacked = struct.unpack(msg_format, msg)
-        accel_raw = data_unpacked[:3]
-        gyro_raw = data_unpacked[3:]
-        accel_xyz = [v * accel_resolution/2 for v in accel_raw]     # m/s^2
-        gyro_xyz = [v * gyro_resolution/2 for v in gyro_raw]        # deg/sec
         
-        pitch_angle_accel = np.arctan2(accel_xyz[0], accel_xyz[2])  # rad
-        
-        if not gyro_is_calibrated:
-            if len(gyro_raw_hist) < imu_sample_freq:
-                gyro_raw_hist.append(gyro_xyz)
-                
-            if len(gyro_raw_hist) == imu_sample_freq:
-                gyro_offset = list(np.mean(gyro_raw_hist, axis=0))
-                print('calculated gyro offset:', gyro_offset)
-                gyro_is_calibrated = True
-                
-        pitch_angular_rate_gyro = (gyro_xyz[1] - gyro_offset[1]) * np.pi / 180.      # rad/sec (calibrated)
-        delta_angular_rate_gyro = -pitch_angular_rate_gyro * (1. / imu_sample_freq)        # invert direction to have same sign as pitch_angle_accel
-        pitch_angle_gyro += delta_angular_rate_gyro
-        
-        # complementary filter
-        
-        pitch_angle_est = alpha * (pitch_angle_est + delta_angular_rate_gyro) + (1-alpha) * pitch_angle_accel
+        if False:
+            data_unpacked = struct.unpack(msg_format, msg)
+            accel_raw = data_unpacked[:3]
+            gyro_raw = data_unpacked[3:]
+            accel_xyz = [v * accel_resolution/2 for v in accel_raw]     # m/s^2
+            gyro_xyz = [v * gyro_resolution/2 for v in gyro_raw]        # deg/sec
+            
+            pitch_angle_accel = np.arctan2(accel_xyz[0], accel_xyz[2])  # rad
+            
+            if not gyro_is_calibrated:
+                if len(gyro_raw_hist) < imu_sample_freq:
+                    gyro_raw_hist.append(gyro_xyz)
+                    
+                if len(gyro_raw_hist) == imu_sample_freq:
+                    gyro_offset = list(np.mean(gyro_raw_hist, axis=0))
+                    print('calculated gyro offset:', gyro_offset)
+                    gyro_is_calibrated = True
+                    
+            pitch_angular_rate_gyro = (gyro_xyz[1] - gyro_offset[1]) * np.pi / 180.      # rad/sec (calibrated)
+            delta_angular_rate_gyro = -pitch_angular_rate_gyro * (1. / imu_sample_freq)        # invert direction to have same sign as pitch_angle_accel
+            pitch_angle_gyro += delta_angular_rate_gyro
+            
+            # complementary filter
+            
+            pitch_angle_est = alpha * (pitch_angle_est + delta_angular_rate_gyro) + (1-alpha) * pitch_angle_accel
+        else:
+            data_unpacked = struct.unpack(msg_format, msg)
+            pitch_angle_accel = data_unpacked[0]
+            pitch_angle_gyro = data_unpacked[1]
+            pitch_angle_est = data_unpacked[2]
                 
         #print(accel_xyz, gyro_xyz, pitch_angle_accel*180/np.pi) #, msg)#, ser_bytes.decode("utf-8"))
         print(f'pitch angle accel [deg]: {pitch_angle_accel*180/np.pi:.2f}, pitch angle gyro [deg]: {pitch_angle_gyro*180/np.pi:.2f}, pitch angle est [deg]: {pitch_angle_est*180/np.pi:.2f}')

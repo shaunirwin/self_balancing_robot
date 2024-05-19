@@ -11,7 +11,7 @@
     #include "Wire.h"
 #endif
 
-MPU6050 accelgyro;
+MPU6050 imu;
 
 const int PIN_LED_PWM = 2;
 const int PIN_MOTOR1_SLEEP = 47;
@@ -28,17 +28,16 @@ const int PWM_RESOLUTION = 8;         // set PWM resolution
 
 const bool MOTOR_FORWARD = true;
 
-bool dirDrive = true;
+bool dirDrive = MOTOR_FORWARD;
 bool ledStatus = true;
-
-// measured values
-volatile long motor1Position = 0;
-volatile bool motor1Dir = true;
 
 // serial tx control characters
 const char STX = '!'; //'\x002';   // start of frame
 const char ETX = '@'; //'\x003';   // end of frame
 
+// state estimation
+volatile long motor1Position = 0;
+volatile bool motor1Dir = MOTOR_FORWARD;
 typedef struct {
    int16_t ax;
    int16_t ay;
@@ -48,8 +47,20 @@ typedef struct {
    int16_t gz;
 } IMUPacket_t;
 
+typedef struct {
+   float pitch_accel;
+   float pitch_gyro;
+   float pitch_est;
+} StateEstimatePacket_t;
+
+float accel_resolution = 0;
+float gyro_resolution = 0;
+float pitchAngleGyro = 0;             // [rad]
+float pitchAngleEst = 0;              // [rad]
+
 // hardware timer
 const int ESTIMATOR_FREQ = 250;        // frequency to run state estiamtor at [Hz]
+const float ALPHA = 0.98;             // gyro weight for complementary filter
 hw_timer_t *hwTimer = NULL;
 volatile SemaphoreHandle_t timerSemaphore;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
@@ -67,7 +78,7 @@ void taskReadIMURawValues(void * parameter) {
         // Wait for the semaphore from the timer ISR
         if(xSemaphoreTake(timerSemaphore, portMAX_DELAY) == pdTRUE) {
             IMUPacket_t imuPacket;
-            accelgyro.getMotion6(&(imuPacket.ax), &(imuPacket.ay), &(imuPacket.az), &(imuPacket.gx), &(imuPacket.gy), &(imuPacket.gz));
+            imu.getMotion6(&(imuPacket.ax), &(imuPacket.ay), &(imuPacket.az), &(imuPacket.gx), &(imuPacket.gy), &(imuPacket.gz));
 
             if (xQueueSend(queueIMURaw, &imuPacket, portMAX_DELAY) != pdPASS) {
                 Serial.println("Failed to send to queue");
@@ -78,14 +89,33 @@ void taskReadIMURawValues(void * parameter) {
 
 void taskEstimateState(void * parameter) {
     IMUPacket_t imuPacket;
+    StateEstimatePacket_t stateEstimatePacket;
     for (;;) {
         // Wait until data is available in the queue
         if (xQueueReceive(queueIMURaw, &imuPacket, portMAX_DELAY) == pdPASS) {
 
-            //float ax = imuPacket.ax 
+            const float ax = imuPacket.ax * accel_resolution / 2;   // [m/s^2]
+            const float az = imuPacket.az * accel_resolution / 2;
+            const float gy = imuPacket.gy * gyro_resolution / 2;    // [deg/s]
+
+            const float pitchAngleAccel = atan2(ax, az);            // [rad]
+
+            // TODO: calculate gyro offsets
+            float gyroOffsetY = 0;                            // [deg/s]
+
+            const float pitchAngularRateGyro = (gy - gyroOffsetY) * PI / 180.;          // [rad/s]
+            const float deltaAngularRateGyro = -pitchAngularRateGyro / ESTIMATOR_FREQ;
+
+            pitchAngleGyro += deltaAngularRateGyro;
+
+            pitchAngleEst = ALPHA * (pitchAngleEst + deltaAngularRateGyro) + (1-ALPHA) * pitchAngleAccel;   // [rad]
+
+            stateEstimatePacket.pitch_accel = pitchAngleAccel;
+            stateEstimatePacket.pitch_gyro = pitchAngleGyro;
+            stateEstimatePacket.pitch_est = pitchAngleEst;
             
             Serial.write(STX);
-            Serial.write( (uint8_t *) &imuPacket, sizeof( imuPacket ) );
+            Serial.write( (uint8_t *) &stateEstimatePacket, sizeof( stateEstimatePacket ) );
             Serial.write(ETX);
         }
     }
@@ -120,7 +150,9 @@ void setup(){
       Fastwire::setup(400, true);
   #endif
 
-  accelgyro.initialize();
+  imu.initialize();
+  accel_resolution = imu.get_acce_resolution();
+  gyro_resolution = imu.get_gyro_resolution();
 
   // Create the semaphore
   timerSemaphore = xSemaphoreCreateBinary();
@@ -143,7 +175,7 @@ void setup(){
 
   // verify connection
   // Serial.println("Testing device connections...");
-  // Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+  // Serial.println(imu.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
 
   pinMode(PIN_MOTOR1_SLEEP, OUTPUT);
   pinMode(PIN_MOTOR1_DIR, OUTPUT);
@@ -174,9 +206,9 @@ void setup(){
 
 //     IMUPacket_t imuPacket;
 
-//     // accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+//     // imu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
-//     accelgyro.getMotion6(&(imuPacket.ax), &(imuPacket.ay), &(imuPacket.az), &(imuPacket.gx), &(imuPacket.gy), &(imuPacket.gz));
+//     imu.getMotion6(&(imuPacket.ax), &(imuPacket.ay), &(imuPacket.az), &(imuPacket.gx), &(imuPacket.gy), &(imuPacket.gz));
 //     // imuPacket.gz = 246;
 //     //Serial.write((uint8_t)(ax >> 8)); Serial.write((uint8_t)(ax & 0xFF)); Serial.write((uint8_t)('\r')); Serial.write((uint8_t)('\n'));
 //     Serial.write(STX);
