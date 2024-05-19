@@ -1,5 +1,6 @@
 import serial
 import struct
+import numpy as np
 
 ser = serial.Serial(port='/dev/ttyACM0',
     baudrate=115200,
@@ -44,9 +45,11 @@ while True:
         data_unpacked = struct.unpack(msg_format, msg)
         accel_raw = data_unpacked[:3]
         gyro_raw = data_unpacked[3:]
-        accel_converted = [v * accel_resolution/2 for v in accel_raw]
-        gyro_converted = [v * gyro_resolution/2 for v in gyro_raw]
-        print(accel_converted, gyro_converted) #, msg)#, ser_bytes.decode("utf-8"))
+        accel_xyz = [v * accel_resolution/2 for v in accel_raw]     # m/s^2
+        gyro_xyz = [v * gyro_resolution/2 for v in gyro_raw]        # deg/sec
+        pitch_angle_accel = np.arctan2(accel_xyz[0], accel_xyz[2])  # rad
+        #print(accel_xyz, gyro_xyz, pitch_angle_accel*180/np.pi) #, msg)#, ser_bytes.decode("utf-8"))
+        print(f'pitch angle [deg]: {pitch_angle_accel*180/np.pi:.2f}')
     except:
         print("Keyboard Interrupt")
         
