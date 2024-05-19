@@ -104,16 +104,33 @@ volatile bool motor1Dir = true;
 
 // hardware timer
 hw_timer_t *hw_timer = NULL;
+volatile SemaphoreHandle_t timerSemaphore;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 uint16_t pulses_count = 0;    // for testing
 
 void IRAM_ATTR state_estimator_timer(){
-  // ledStatus = !ledStatus;
-  pulses_count += 1;
+  // Give the semaphore to unblock the task
+  xSemaphoreGiveFromISR(timerSemaphore, NULL);
 
-  if (pulses_count == 250) {
-    ledStatus = !ledStatus;
-    pulses_count = 0;
-  }
+  // ledStatus = !ledStatus;
+}
+
+// Task to be executed periodically
+void periodicTask(void * parameter) {
+    for(;;) {
+        // Wait for the semaphore from the timer ISR
+        if(xSemaphoreTake(timerSemaphore, portMAX_DELAY) == pdTRUE) {
+            // Do something
+
+            pulses_count += 1;
+
+            if (pulses_count == 250) {
+              ledStatus = !ledStatus;
+              pulses_count = 0;
+            }
+            //Serial.println("Task executed at 250Hz");
+        }
+    }
 }
 
 void updateMotor1Position(){
@@ -147,11 +164,15 @@ void setup(){
 
   accelgyro.initialize();
 
-  hw_timer = timerBegin(/* timer num */ 0, /* divider */ 80, /* count up */true);
+  // Create the semaphore
+  timerSemaphore = xSemaphoreCreateBinary();
+
+  // Create the task that will be executed periodically
+  xTaskCreate(periodicTask, "Periodic Task", 10000, NULL, 1, NULL);
+
+  hw_timer = timerBegin(/* timer num */ 0, /* clock divider */ 80, /* count up */true);
   timerAttachInterrupt(hw_timer, &state_estimator_timer, /* edge */ true);
-  // timerAlarmWrite(hw_timer, 1000000, true);   // 1kHz
   timerAlarmWrite(hw_timer, 4000, /* periodic */true);      // 250Hz (1 million / 250 = 4000)
-  timerAlarmWrite(hw_timer, 4000, true);      // 250Hz
   timerAlarmEnable(hw_timer);
 
   // verify connection
