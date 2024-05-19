@@ -130,28 +130,26 @@ void IRAM_ATTR state_estimator_timer(){
 }
 
 // Task to be executed periodically
-void periodicTask(void * parameter) {
+void taskReadIMURawValues(void * parameter) {
     for(;;) {
         // Wait for the semaphore from the timer ISR
         if(xSemaphoreTake(timerSemaphore, portMAX_DELAY) == pdTRUE) {
-            // Do something
+            IMUPacket_t imuPacket;
+            accelgyro.getMotion6(&(imuPacket.ax), &(imuPacket.ay), &(imuPacket.az), &(imuPacket.gx), &(imuPacket.gy), &(imuPacket.gz));
 
-            // IMUPacket_t imuPacket;
-            // accelgyro.getMotion6(&(imuPacket.ax), &(imuPacket.ay), &(imuPacket.az), &(imuPacket.gx), &(imuPacket.gy), &(imuPacket.gz));
+            // pulses_count += 1;
 
-            pulses_count += 1;
-
-            bool val = false;
-            if (pulses_count == 250) {
-              //ledStatus = !ledStatus;
-              val = true;
-              pulses_count = 0;
-            }
+            // bool val = false;
+            // if (pulses_count == 250) {
+            //   //ledStatus = !ledStatus;
+            //   val = true;
+            //   pulses_count = 0;
+            // }
 
             // Send the data to the queue
-            IMUPacket_t imuData;
-            imuData.ax = val;
-            if (xQueueSend(queue_imu_raw, &imuData, portMAX_DELAY) != pdPASS) {
+            // IMUPacket_t imuData;
+            // imuData.ax = val;
+            if (xQueueSend(queue_imu_raw, &imuPacket, portMAX_DELAY) != pdPASS) {
                 Serial.println("Failed to send to queue");
             }
             //Serial.println("Task executed at 250Hz");
@@ -160,15 +158,18 @@ void periodicTask(void * parameter) {
 }
 
 void consumerTask(void * parameter) {
-    IMUPacket_t imuData;
+    IMUPacket_t imuPacket;
     for (;;) {
         // Wait until data is available in the queue
-        if (xQueueReceive(queue_imu_raw, &imuData, portMAX_DELAY) == pdPASS) {
-            bool ledToggle = imuData.ax;
-            if (ledToggle) {
-              ledStatus = !ledStatus;
-            }
-            // Serial.print();
+        if (xQueueReceive(queue_imu_raw, &imuPacket, portMAX_DELAY) == pdPASS) {
+            // bool ledToggle = imuPacket.ax;
+            // if (ledToggle) {
+            //   ledStatus = !ledStatus;
+            // }
+            
+            Serial.write(STX);
+            Serial.write( (uint8_t *) &imuPacket, sizeof( imuPacket ) );
+            Serial.write(ETX);
         }
     }
 }
@@ -214,7 +215,7 @@ void setup(){
   }
 
   // Create the task that will be executed periodically
-  xTaskCreate(periodicTask, "Periodic Task", 10000, NULL, 1, NULL);
+  xTaskCreate(taskReadIMURawValues, "Periodic Task", 10000, NULL, 1, NULL);
   xTaskCreate(consumerTask, "Consumer Task", 2048, NULL, 1, NULL);
 
   hw_timer = timerBegin(/* timer num */ 0, /* clock divider */ 80, /* count up */true);
