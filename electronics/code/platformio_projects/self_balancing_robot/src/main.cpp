@@ -102,10 +102,24 @@ bool ledStatus = true;
 volatile long motor1Position = 0;
 volatile bool motor1Dir = true;
 
+// serial tx control characters
+const char STX = '!'; //'\x002';   // start of frame
+const char ETX = '@'; //'\x003';   // end of frame
+
+typedef struct {
+   int16_t ax;
+   int16_t ay;
+   int16_t az;
+   int16_t gx;
+   int16_t gy;
+   int16_t gz;
+} IMUPacket_t;
+
 // hardware timer
 hw_timer_t *hw_timer = NULL;
 volatile SemaphoreHandle_t timerSemaphore;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+QueueHandle_t queue_imu_raw;  // queue of raw IMU measurements
 uint16_t pulses_count = 0;    // for testing
 
 void IRAM_ATTR state_estimator_timer(){
@@ -122,13 +136,39 @@ void periodicTask(void * parameter) {
         if(xSemaphoreTake(timerSemaphore, portMAX_DELAY) == pdTRUE) {
             // Do something
 
+            // IMUPacket_t imuPacket;
+            // accelgyro.getMotion6(&(imuPacket.ax), &(imuPacket.ay), &(imuPacket.az), &(imuPacket.gx), &(imuPacket.gy), &(imuPacket.gz));
+
             pulses_count += 1;
 
+            bool val = false;
             if (pulses_count == 250) {
-              ledStatus = !ledStatus;
+              //ledStatus = !ledStatus;
+              val = true;
               pulses_count = 0;
             }
+
+            // Send the data to the queue
+            IMUPacket_t imuData;
+            imuData.ax = val;
+            if (xQueueSend(queue_imu_raw, &imuData, portMAX_DELAY) != pdPASS) {
+                Serial.println("Failed to send to queue");
+            }
             //Serial.println("Task executed at 250Hz");
+        }
+    }
+}
+
+void consumerTask(void * parameter) {
+    IMUPacket_t imuData;
+    for (;;) {
+        // Wait until data is available in the queue
+        if (xQueueReceive(queue_imu_raw, &imuData, portMAX_DELAY) == pdPASS) {
+            bool ledToggle = imuData.ax;
+            if (ledToggle) {
+              ledStatus = !ledStatus;
+            }
+            // Serial.print();
         }
     }
 }
@@ -167,8 +207,15 @@ void setup(){
   // Create the semaphore
   timerSemaphore = xSemaphoreCreateBinary();
 
+  queue_imu_raw = xQueueCreate(10, sizeof(IMUPacket_t));
+  if (queue_imu_raw == NULL) {
+      Serial.println("Failed to create queue");
+      while (1);
+  }
+
   // Create the task that will be executed periodically
   xTaskCreate(periodicTask, "Periodic Task", 10000, NULL, 1, NULL);
+  xTaskCreate(consumerTask, "Consumer Task", 2048, NULL, 1, NULL);
 
   hw_timer = timerBegin(/* timer num */ 0, /* clock divider */ 80, /* count up */true);
   timerAttachInterrupt(hw_timer, &state_estimator_timer, /* edge */ true);
@@ -189,19 +236,6 @@ void setup(){
 
   attachInterrupt(digitalPinToInterrupt(encoder1APin), updateMotor1Position, CHANGE);
 }
-
-// serial tx control characters
-const char STX = '!'; //'\x002';   // start of frame
-const char ETX = '@'; //'\x003';   // end of frame
-
-struct IMUPacket {
-   int16_t ax;
-   int16_t ay;
-   int16_t az;
-   int16_t gx;
-   int16_t gy;
-   int16_t gz;
-};
  
 // void loop(){
 //     digitalWrite(motor1SleepPin, HIGH);     // inveted, so HIGH should be not sleeping/coasting?
@@ -219,7 +253,7 @@ struct IMUPacket {
 //     int16_t ax, ay, az;
 // int16_t gx, gy, gz;
 
-//     struct IMUPacket imuPacket;
+//     IMUPacket_t imuPacket;
 
 //     // accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
