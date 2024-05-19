@@ -102,6 +102,20 @@ bool ledStatus = true;
 volatile long motor1Position = 0;
 volatile bool motor1Dir = true;
 
+// hardware timer
+hw_timer_t *hw_timer = NULL;
+uint16_t pulses_count = 0;    // for testing
+
+void IRAM_ATTR state_estimator_timer(){
+  // ledStatus = !ledStatus;
+  pulses_count += 1;
+
+  if (pulses_count == 250) {
+    ledStatus = !ledStatus;
+    pulses_count = 0;
+  }
+}
+
 void updateMotor1Position(){
   if (digitalRead(encoder1BPin) != digitalRead(encoder1APin)) {
     motor1Position ++;
@@ -126,11 +140,19 @@ void setup(){
   // join I2C bus (I2Cdev library doesn't do this automatically)
   #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
       Wire.begin();
+      // Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties. - Shaun: Not sure whether I need this?
   #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
       Fastwire::setup(400, true);
   #endif
 
   accelgyro.initialize();
+
+  hw_timer = timerBegin(/* timer num */ 0, /* divider */ 80, /* count up */true);
+  timerAttachInterrupt(hw_timer, &state_estimator_timer, /* edge */ true);
+  // timerAlarmWrite(hw_timer, 1000000, true);   // 1kHz
+  timerAlarmWrite(hw_timer, 4000, /* periodic */true);      // 250Hz (1 million / 250 = 4000)
+  timerAlarmWrite(hw_timer, 4000, true);      // 250Hz
+  timerAlarmEnable(hw_timer);
 
   // verify connection
   // Serial.println("Testing device connections...");
@@ -160,46 +182,49 @@ struct IMUPacket {
    int16_t gz;
 };
  
-void loop(){
-    digitalWrite(motor1SleepPin, HIGH);     // inveted, so HIGH should be not sleeping/coasting?
-    digitalWrite(motor1DirPin, dirDrive);
+// void loop(){
+//     digitalWrite(motor1SleepPin, HIGH);     // inveted, so HIGH should be not sleeping/coasting?
+//     digitalWrite(motor1DirPin, dirDrive);
 
-    // ledcWrite(motor1PWMChannel, 0);        // set the Duty cycle out of 255
-    // delay(1000);
-    //ledcWrite(motor1PWMChannel, 50);
-    // delay(1000);
-    // ledcWrite(motor1PWMChannel, 80);
-    // delay(1000);
+//     // ledcWrite(motor1PWMChannel, 0);        // set the Duty cycle out of 255
+//     // delay(1000);
+//     //ledcWrite(motor1PWMChannel, 50);
+//     // delay(1000);
+//     // ledcWrite(motor1PWMChannel, 80);
+//     // delay(1000);
 
-    // dirDrive = !dirDrive;
+//     // dirDrive = !dirDrive;
 
-    int16_t ax, ay, az;
-int16_t gx, gy, gz;
+//     int16_t ax, ay, az;
+// int16_t gx, gy, gz;
 
-    struct IMUPacket imuPacket;
+//     struct IMUPacket imuPacket;
 
-    // accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+//     // accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
-    accelgyro.getMotion6(&(imuPacket.ax), &(imuPacket.ay), &(imuPacket.az), &(imuPacket.gx), &(imuPacket.gy), &(imuPacket.gz));
-    // imuPacket.gz = 246;
-    //Serial.write((uint8_t)(ax >> 8)); Serial.write((uint8_t)(ax & 0xFF)); Serial.write((uint8_t)('\r')); Serial.write((uint8_t)('\n'));
-    Serial.write(STX);
-    Serial.write( (uint8_t *) &imuPacket, sizeof( imuPacket ) );
-    Serial.write(ETX);
+//     accelgyro.getMotion6(&(imuPacket.ax), &(imuPacket.ay), &(imuPacket.az), &(imuPacket.gx), &(imuPacket.gy), &(imuPacket.gz));
+//     // imuPacket.gz = 246;
+//     //Serial.write((uint8_t)(ax >> 8)); Serial.write((uint8_t)(ax & 0xFF)); Serial.write((uint8_t)('\r')); Serial.write((uint8_t)('\n'));
+//     Serial.write(STX);
+//     Serial.write( (uint8_t *) &imuPacket, sizeof( imuPacket ) );
+//     Serial.write(ETX);
 
-    // Serial.print("a/g:\t");
-    // Serial.print("a:\t");
-    //     Serial.print(ax); Serial.print("\t");
-    //     Serial.print(ay); Serial.print("\t");
-    //     Serial.print(az); Serial.print("\t");
-        // Serial.print(gx); Serial.print("\t");
-        // Serial.print(gy); Serial.print("\t");
-        // Serial.println(gz);
-        // Serial.print("\n");
-    delay(50);
+//     // Serial.print("a/g:\t");
+//     // Serial.print("a:\t");
+//     //     Serial.print(ax); Serial.print("\t");
+//     //     Serial.print(ay); Serial.print("\t");
+//     //     Serial.print(az); Serial.print("\t");
+//         // Serial.print(gx); Serial.print("\t");
+//         // Serial.print(gy); Serial.print("\t");
+//         // Serial.println(gz);
+//         // Serial.print("\n");
+//     delay(50);
+// }
+
+
+void loop() {
+  digitalWrite(ledPWMPin, ledStatus);
 }
-
-
 
 
 
