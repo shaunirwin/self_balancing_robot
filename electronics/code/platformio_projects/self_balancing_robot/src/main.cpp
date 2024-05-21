@@ -14,17 +14,17 @@
 MPU6050 imu;
 
 const int PIN_LED_PWM = 2;
-const int PIN_MOTOR1_SLEEP = 47;
-const int PIN_MOTOR1_DIR = 48;
-const int PIN_ENCODER1A = 11;
-const int PIN_ENCODER1B = 12;
-const int PIN_MOTOR1_PWM = 45;      // the PWM pin the motor 1 PWM is attached to
-const int PIN_I2C_SDA = 21; // GPIO21 as I2C SDA (this is the default for ESP32 devices)
-const int PIN_I2C_SCL = 20; // GPIO17 as I2C SCL (GPIO22 is the default)
+const int PIN_MOTOR1_SLEEP = 42;
+const int PIN_MOTOR1_DIR = 40;
+const int PIN_ENCODER1A = 15;
+const int PIN_ENCODER1B = 16;
+const int PIN_MOTOR1_PWM = 35;
+const int PIN_I2C_SDA = 14;
+const int PIN_I2C_SCL = 13;
 
-const int PWM_FREQ = 30000;       // frequency to run PWM at [Hz]
+const int PWM_FREQ = 30000;         // frequency to run PWM at [Hz]
 const int MOTOR1_PWM_CHANNEL = 0;   // set the PWM channel
-const int PWM_RESOLUTION = 8;         // set PWM resolution
+const int PWM_RESOLUTION = 8;       // set PWM resolution
 
 const bool MOTOR_FORWARD = true;
 

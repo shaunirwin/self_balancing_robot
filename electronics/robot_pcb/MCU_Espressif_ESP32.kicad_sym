@@ -119,7 +119,7 @@
 				)
 			)
 			(pin power_out line
-				(at -6.35 43.18 270)
+				(at -6.35 45.72 270)
 				(length 2.54)
 				(name "3V3"
 					(effects
@@ -137,7 +137,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 13.97 180)
+				(at -13.97 13.97 0)
 				(length 2.54)
 				(name "GPIO18"
 					(effects
@@ -155,7 +155,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 11.43 180)
+				(at -13.97 11.43 0)
 				(length 2.54)
 				(name "GPIO8"
 					(effects
@@ -173,7 +173,7 @@
 				)
 			)
 			(pin bidirectional line
-				(at -11.43 8.89 180)
+				(at -13.97 8.89 0)
 				(length 2.54)
 				(name "GPIO3"
 					(effects
@@ -191,7 +191,7 @@
 				)
 			)
 			(pin bidirectional line
-				(at -11.43 6.35 180)
+				(at -13.97 6.35 0)
 				(length 2.54)
 				(name "GPIO46"
 					(effects
@@ -209,7 +209,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 3.81 180)
+				(at -13.97 3.81 0)
 				(length 2.54)
 				(name "GPIO9"
 					(effects
@@ -227,7 +227,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 1.27 180)
+				(at -13.97 1.27 0)
 				(length 2.54)
 				(name "GPIO10"
 					(effects
@@ -245,7 +245,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 -1.27 180)
+				(at -13.97 -1.27 0)
 				(length 2.54)
 				(name "GPIO11"
 					(effects
@@ -263,7 +263,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 -3.81 180)
+				(at -13.97 -3.81 0)
 				(length 2.54)
 				(name "GPIO12"
 					(effects
@@ -281,7 +281,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 -6.35 180)
+				(at -13.97 -6.35 0)
 				(length 2.54)
 				(name "GPIO13"
 					(effects
@@ -299,7 +299,7 @@
 				)
 			)
 			(pin bidirectional line
-				(at -11.43 -8.89 180)
+				(at -13.97 -8.89 0)
 				(length 2.54)
 				(name "GPIO14"
 					(effects
@@ -317,7 +317,7 @@
 				)
 			)
 			(pin input line
-				(at -11.43 34.29 180)
+				(at -13.97 34.29 0)
 				(length 2.54)
 				(name "RST/EN"
 					(effects
@@ -335,7 +335,7 @@
 				)
 			)
 			(pin power_in line
-				(at -2.54 43.18 270)
+				(at -2.54 45.72 270)
 				(length 2.54)
 				(name "5V"
 					(effects
@@ -353,7 +353,7 @@
 				)
 			)
 			(pin power_in line
-				(at 1.27 -19.05 90)
+				(at 1.27 -21.59 90)
 				(length 2.54)
 				(name "GND"
 					(effects
@@ -515,7 +515,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 31.75 180)
+				(at -13.97 31.75 0)
 				(length 2.54)
 				(name "GPIO4"
 					(effects
@@ -713,7 +713,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 29.21 180)
+				(at -13.97 29.21 0)
 				(length 2.54)
 				(name "GPIO5"
 					(effects
@@ -749,7 +749,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 26.67 180)
+				(at -13.97 26.67 0)
 				(length 2.54)
 				(name "GPIO6"
 					(effects
@@ -767,7 +767,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 24.13 180)
+				(at -13.97 24.13 0)
 				(length 2.54)
 				(name "GPIO7"
 					(effects
@@ -785,7 +785,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 21.59 180)
+				(at -13.97 21.59 0)
 				(length 2.54)
 				(name "GPIO15"
 					(effects
@@ -803,7 +803,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 19.05 180)
+				(at -13.97 19.05 0)
 				(length 2.54)
 				(name "GPIO16"
 					(effects
@@ -821,7 +821,7 @@
 				)
 			)
 			(pin open_collector line
-				(at -11.43 16.51 180)
+				(at -13.97 16.51 0)
 				(length 2.54)
 				(name "GPIO17"
 					(effects
