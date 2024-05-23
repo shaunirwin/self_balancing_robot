@@ -31,6 +31,7 @@ const int MOTOR2_PWM_CHANNEL = 1;   // set the PWM channel
 const int PWM_RESOLUTION = 8;       // set PWM resolution
 
 const bool MOTOR_FORWARD = true;
+const bool MOTOR_COAST = false;
 
 bool dirDrive = MOTOR_FORWARD;
 bool ledStatus = true;
@@ -40,8 +41,8 @@ const char STX = '!'; //'\x002';   // start of frame
 const char ETX = '@'; //'\x003';   // end of frame
 
 // state estimation
-volatile long motor1Position = 0;
-volatile bool motor1Dir = MOTOR_FORWARD;
+volatile long motor1PositionMeas = 0;
+volatile bool motor1DirMeas = MOTOR_FORWARD;
 typedef struct {
    int16_t ax;
    int16_t ay;
@@ -63,7 +64,7 @@ float pitchAngleGyro = 0;             // [rad]
 float pitchAngleEst = 0;              // [rad]
 
 // hardware timer
-const int ESTIMATOR_FREQ = 250;        // frequency to run state estiamtor at [Hz]
+const int ESTIMATOR_FREQ = 250;        // frequency to run state estimator at [Hz]
 const float ALPHA = 0.98;             // gyro weight for complementary filter
 hw_timer_t *hwTimer = NULL;
 volatile SemaphoreHandle_t timerSemaphore;
@@ -134,18 +135,18 @@ void taskEstimateState(void * parameter) {
 
 void updateMotor1Position(){
   if (digitalRead(PIN_ENCODER1B) != digitalRead(PIN_ENCODER1A)) {
-    motor1Position ++;
-    motor1Dir = MOTOR_FORWARD;
+    motor1PositionMeas ++;
+    motor1DirMeas = MOTOR_FORWARD;
   }
   else {
-    motor1Position --;
-    motor1Dir = !MOTOR_FORWARD;
+    motor1PositionMeas --;
+    motor1DirMeas = !MOTOR_FORWARD;
   }
 
-  if (motor1Position % 464 == 0) {
-    ledStatus = !ledStatus;
-    digitalWrite(PIN_LED_PWM, ledStatus);
-  }
+  // if (motor1PositionMeas % 464 == 0) {
+  //   ledStatus = !ledStatus;
+  //   digitalWrite(PIN_LED_PWM, ledStatus);
+  // }
 }
  
 void setup(){
@@ -193,6 +194,10 @@ void setup(){
   pinMode(PIN_MOTOR1_DIR, OUTPUT);
   pinMode(PIN_MOTOR2_DIR, OUTPUT);
   pinMode(PIN_LED_PWM, OUTPUT);
+
+  // enable motors
+  digitalWrite(PIN_MOTOR1_SLEEP, !MOTOR_COAST);
+  digitalWrite(PIN_MOTOR2_SLEEP, !MOTOR_COAST);
 
   ledcSetup(MOTOR1_PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);  // define the PWM Setup
   ledcSetup(MOTOR2_PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);
@@ -244,7 +249,17 @@ void setup(){
 
 
 void loop() {
-  digitalWrite(PIN_LED_PWM, ledStatus);
+  // digitalWrite(PIN_LED_PWM, ledStatus);
+
+  // ledcWrite(MOTOR1_PWM_CHANNEL, 0);        // set the Duty cycle out of 255
+  // ledcWrite(MOTOR2_PWM_CHANNEL, 0);
+  // delay(1000);
+  // ledcWrite(MOTOR1_PWM_CHANNEL, 50);
+  //  ledcWrite(MOTOR2_PWM_CHANNEL, 50);
+  // delay(1000);
+  // ledcWrite(MOTOR1_PWM_CHANNEL, 80);
+  // ledcWrite(MOTOR2_PWM_CHANNEL, 80);
+  // delay(1000);
 
 }
 
