@@ -90,18 +90,25 @@ void taskReadIMURawValues(void * parameter) {
 void taskEstimateState(void * parameter) {
     IMUPacket_t imuPacket;
     StateEstimatePacket_t stateEstimatePacket;
+    bool gyroOffsetCalculated = false;
+    float gyroOffsetY = 0;                            // [deg/s]
     for (;;) {
         // Wait until data is available in the queue
         if (xQueueReceive(queueIMURaw, &imuPacket, portMAX_DELAY) == pdPASS) {
 
-            const float ax = imuPacket.ax * accel_resolution / 2;   // [m/s^2]
-            const float az = imuPacket.az * accel_resolution / 2;
+            // invert accelerometer readings to account for IMU mounted upside down
+            const float ax = -imuPacket.ax * accel_resolution / 2;   // [m/s^2]
+            const float az = -imuPacket.az * accel_resolution / 2;
             const float gy = imuPacket.gy * gyro_resolution / 2;    // [deg/s]
 
             const float pitchAngleAccel = atan2(ax, az);            // [rad]
-
-            // TODO: calculate gyro offsets
-            float gyroOffsetY = 0;                            // [deg/s]
+            
+            if (!gyroOffsetCalculated)
+            {
+                // TODO: calculate average over a period
+                gyroOffsetY = gy;
+                gyroOffsetCalculated = true;
+            }
 
             const float pitchAngularRateGyro = (gy - gyroOffsetY) * PI / 180.;          // [rad/s]
             const float deltaAngularRateGyro = -pitchAngularRateGyro / ESTIMATOR_FREQ;
@@ -230,5 +237,6 @@ void setup(){
 
 void loop() {
   digitalWrite(PIN_LED_PWM, ledStatus);
+
 }
 
