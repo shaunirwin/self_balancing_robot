@@ -15,15 +15,19 @@ MPU6050 imu;
 
 const int PIN_LED_PWM = 2;
 const int PIN_MOTOR1_SLEEP = 42;
+const int PIN_MOTOR2_SLEEP = 41;
 const int PIN_MOTOR1_DIR = 40;
+const int PIN_MOTOR2_DIR = 39;
 const int PIN_ENCODER1A = 15;
 const int PIN_ENCODER1B = 16;
 const int PIN_MOTOR1_PWM = 35;
+const int PIN_MOTOR2_PWM = 45;
 const int PIN_I2C_SDA = 14;
 const int PIN_I2C_SCL = 13;
 
 const int PWM_FREQ = 30000;         // frequency to run PWM at [Hz]
 const int MOTOR1_PWM_CHANNEL = 0;   // set the PWM channel
+const int MOTOR2_PWM_CHANNEL = 1;   // set the PWM channel
 const int PWM_RESOLUTION = 8;       // set PWM resolution
 
 const bool MOTOR_FORWARD = true;
@@ -185,12 +189,16 @@ void setup(){
   // Serial.println(imu.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
 
   pinMode(PIN_MOTOR1_SLEEP, OUTPUT);
+  pinMode(PIN_MOTOR2_SLEEP, OUTPUT);
   pinMode(PIN_MOTOR1_DIR, OUTPUT);
+  pinMode(PIN_MOTOR2_DIR, OUTPUT);
   pinMode(PIN_LED_PWM, OUTPUT);
 
   ledcSetup(MOTOR1_PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);  // define the PWM Setup
+  ledcSetup(MOTOR2_PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);
   ledcAttachPin(PIN_MOTOR1_PWM, MOTOR1_PWM_CHANNEL);
-  //ledcAttachPin(PIN_LED_PWM, MOTOR1_PWM_CHANNEL);
+  ledcAttachPin(PIN_MOTOR2_PWM, MOTOR2_PWM_CHANNEL);
+  ledcAttachPin(PIN_LED_PWM, MOTOR1_PWM_CHANNEL);
 
   attachInterrupt(digitalPinToInterrupt(PIN_ENCODER1A), updateMotor1Position, CHANGE);
 }
