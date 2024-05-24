@@ -70,6 +70,7 @@ hw_timer_t *hwTimer = NULL;
 volatile SemaphoreHandle_t timerSemaphore;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 QueueHandle_t queueIMURaw;  // queue of raw IMU measurements
+QueueHandle_t queueStateEstimates;  // queue of state estimates
 //uint16_t pulses_count = 0;    // for testing
 
 void IRAM_ATTR stateEstimatorTimer(){
@@ -86,7 +87,7 @@ void taskReadIMURawValues(void * parameter) {
             imu.getMotion6(&(imuPacket.ax), &(imuPacket.ay), &(imuPacket.az), &(imuPacket.gx), &(imuPacket.gy), &(imuPacket.gz));
 
             if (xQueueSend(queueIMURaw, &imuPacket, portMAX_DELAY) != pdPASS) {
-                Serial.println("Failed to send to queue");
+                Serial.println("Failed to send to IMU packet queue");
             }
         }
     }
@@ -129,8 +130,35 @@ void taskEstimateState(void * parameter) {
             Serial.write(STX);
             Serial.write( (uint8_t *) &stateEstimatePacket, sizeof( stateEstimatePacket ) );
             Serial.write(ETX);
+
+            if (xQueueSend(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) != pdPASS) {
+                Serial.println("Failed to send to state estimate queue");
+            }
         }
     }
+}
+
+void taskControlMotors(void * parameter) {
+  StateEstimatePacket_t stateEstimatePacket;
+  const uint DUTY_CYCLE_MIN = 20; //40;
+  const uint DUTY_CYCLE_MAX = 120;      // conservative for now. Can be as high as 255
+  const float PITCH_ANGLE_MAX = 35.f*PI/180;    // rad
+  float pitchAngleSetpoint = -4.f*PI/180;       // rad
+  for (;;) {
+        // Wait until data is available in the queue
+        if (xQueueReceive(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) == pdPASS) {
+            const float pitchAngleEst = stateEstimatePacket.pitch_est;
+            const float pitchAngleErr = pitchAngleEst - pitchAngleSetpoint;
+            const float motorPerc = min(abs(pitchAngleErr), PITCH_ANGLE_MAX) / PITCH_ANGLE_MAX;
+            const bool motorDir = pitchAngleErr > 0;
+            const uint dutyCycle = (DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * motorPerc + DUTY_CYCLE_MIN;
+
+            ledcWrite(MOTOR1_PWM_CHANNEL, dutyCycle);
+            ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle);
+            digitalWrite(PIN_MOTOR1_DIR, motorDir);
+            digitalWrite(PIN_MOTOR2_DIR, motorDir);
+        }
+  }
 }
 
 void updateMotor1Position(){
@@ -174,10 +202,16 @@ void setup(){
       Serial.println("Failed to create queue");
       while (1);
   }
+  queueStateEstimates = xQueueCreate(10, sizeof(StateEstimatePacket_t));
+  if (queueStateEstimates == NULL) {
+      Serial.println("Failed to create queue");
+      while (1);
+  }
 
   // Create the task that will be executed periodically
   xTaskCreate(taskReadIMURawValues, "Read Raw IMU Values", 10000, NULL, 1, NULL);
   xTaskCreate(taskEstimateState, "Estimate State", 2048, NULL, 1, NULL);
+  xTaskCreate(taskControlMotors, "Estimate State", 2048, NULL, 1, NULL);
 
   hwTimer = timerBegin(/* timer num */ 0, /* clock divider */ 80, /* count up */true);
   timerAttachInterrupt(hwTimer, &stateEstimatorTimer, /* edge */ true);
