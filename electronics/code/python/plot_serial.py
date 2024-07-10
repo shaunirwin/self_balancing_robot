@@ -12,10 +12,12 @@ ser.reset_input_buffer()
 receive_raw_imu_data = False
 
 if receive_raw_imu_data:
-    msg_format = '<hhhhhh'      # imu raw data
+    msg_format = '<hhhhhh'      # imu raw data: accel {x,y,z}, gyro {x,y,z}
 else:
-    msg_format = '<fff'      # state estimate data
-msg_size = struct.calcsize(msg_format)        # accel {x,y,z}, gyro {x,y,z}
+    # msg_format = '<fff'         # state estimate data
+    msg_format = '<fffll'         # state estimate data
+    # msg_format = '<ffflBlB'         # state estimate data
+msg_size = struct.calcsize(msg_format)        
 print('struct is this size [bytes]:', msg_size)
 
 # serial control characters
@@ -88,9 +90,20 @@ while True:
             pitch_angle_accel = data_unpacked[0]
             pitch_angle_gyro = data_unpacked[1]
             pitch_angle_est = data_unpacked[2]
+            motor_1_encoder_count = data_unpacked[3]
+            motor_2_encoder_count = data_unpacked[4]
+            # motor_1_dir_meas = data_unpacked[4]
+            # motor_2_encoder_count = data_unpacked[5]
+            # motor_2_dir_meas = data_unpacked[6]
                 
         #print(accel_xyz, gyro_xyz, pitch_angle_accel*180/np.pi) #, msg)#, ser_bytes.decode("utf-8"))
-        print(f'pitch angle accel [deg]: {pitch_angle_accel*180/np.pi:.2f}, pitch angle gyro [deg]: {pitch_angle_gyro*180/np.pi:.2f}, pitch angle est [deg]: {pitch_angle_est*180/np.pi:.2f}')
+        print(f'pitch angle accel [deg]: {pitch_angle_accel*180/np.pi:.2f}, '
+              f'pitch angle gyro [deg]: {pitch_angle_gyro*180/np.pi:.2f}, '
+              f'pitch angle est [deg]: {pitch_angle_est*180/np.pi:.2f}, '
+              f'motor1: {motor_1_encoder_count}, '
+              f'motor2: {motor_2_encoder_count}')
+            #   f'motor1: {motor_1_encoder_count} ({motor_1_dir_meas}), '
+            #   f'motor2: {motor_2_encoder_count} ({motor_2_dir_meas})')
     except:
         print("Keyboard Interrupt")
         

@@ -20,6 +20,8 @@ const int PIN_MOTOR1_DIR = 40;
 const int PIN_MOTOR2_DIR = 39;
 const int PIN_ENCODER1A = 15;
 const int PIN_ENCODER1B = 16;
+const int PIN_ENCODER2A = 11;
+const int PIN_ENCODER2B = 12;
 const int PIN_MOTOR1_PWM = 35;
 const int PIN_MOTOR2_PWM = 45;
 const int PIN_I2C_SDA = 14;
@@ -30,10 +32,12 @@ const int MOTOR1_PWM_CHANNEL = 0;   // set the PWM channel
 const int MOTOR2_PWM_CHANNEL = 1;   // set the PWM channel
 const int PWM_RESOLUTION = 8;       // set PWM resolution
 
-const bool MOTOR_FORWARD = true;
+const bool MOTOR_1_FORWARD = true;
+const bool MOTOR_2_FORWARD = false;
 const bool MOTOR_COAST = false;
+const uint ENCODER_PULSES_PER_REVOLUTION = 464;
 
-bool dirDrive = MOTOR_FORWARD;
+bool dirDrive = MOTOR_1_FORWARD;
 bool ledStatus = true;
 
 // serial tx control characters
@@ -42,20 +46,32 @@ const char ETX = '@'; //'\x003';   // end of frame
 
 // state estimation
 volatile long motor1PositionMeas = 0;
-volatile bool motor1DirMeas = MOTOR_FORWARD;
+volatile int motor1DirMeas = 0;   // 0: stopped, 1: forward, -1: backward
+volatile long motor2PositionMeas = 0;
+volatile int motor2DirMeas = 0;
+
 typedef struct {
-   int16_t ax;
-   int16_t ay;
-   int16_t az;
-   int16_t gx;
-   int16_t gy;
-   int16_t gz;
+    int16_t ax;
+    int16_t ay;
+    int16_t az;
+    int16_t gx;
+    int16_t gy;
+    int16_t gz;
 } IMUPacket_t;
 
 typedef struct {
-   float pitch_accel;
-   float pitch_gyro;
-   float pitch_est;
+    // IMU estimates
+    float pitch_accel;
+    float pitch_gyro;
+    float pitch_est;
+
+    // wheel encoder measurements
+    long motor1EncoderCount;
+    // unsigned char motor1DirMeas;
+
+    long motor2EncoderCount;
+    // unsigned char motor2DirMeas;
+
 } StateEstimatePacket_t;
 
 float accel_resolution = 0;
@@ -126,6 +142,10 @@ void taskEstimateState(void * parameter) {
             stateEstimatePacket.pitch_accel = pitchAngleAccel;
             stateEstimatePacket.pitch_gyro = pitchAngleGyro;
             stateEstimatePacket.pitch_est = pitchAngleEst;
+            stateEstimatePacket.motor1EncoderCount = motor1PositionMeas;
+            // stateEstimatePacket.motor1DirMeas = static_cast<signed char>(motor1DirMeas);
+            stateEstimatePacket.motor2EncoderCount = motor2PositionMeas;
+            // stateEstimatePacket.motor2DirMeas = static_cast<signed char>(motor2DirMeas);
             
             Serial.write(STX);
             Serial.write( (uint8_t *) &stateEstimatePacket, sizeof( stateEstimatePacket ) );
@@ -153,28 +173,86 @@ void taskControlMotors(void * parameter) {
             const bool motorDir = pitchAngleErr > 0;
             const uint dutyCycle = (DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * motorPerc + DUTY_CYCLE_MIN;
 
+            // invert direction to specific motors in case wires are switched
+            const bool motor1dir = motorDir;
+            const bool motor2dir = !motorDir;
+
             ledcWrite(MOTOR1_PWM_CHANNEL, dutyCycle);
             ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle);
-            digitalWrite(PIN_MOTOR1_DIR, motorDir);
-            digitalWrite(PIN_MOTOR2_DIR, motorDir);
+            digitalWrite(PIN_MOTOR1_DIR, motor1dir);
+            digitalWrite(PIN_MOTOR2_DIR, motor2dir);
         }
   }
 }
 
-void updateMotor1Position(){
-  if (digitalRead(PIN_ENCODER1B) != digitalRead(PIN_ENCODER1A)) {
-    motor1PositionMeas ++;
-    motor1DirMeas = MOTOR_FORWARD;
-  }
-  else {
-    motor1PositionMeas --;
-    motor1DirMeas = !MOTOR_FORWARD;
+void handleMotor1EncoderA() {
+  // Read the state of channel B
+  int stateB = digitalRead(PIN_ENCODER1B);
+
+  // Determine the direction
+  if (digitalRead(PIN_ENCODER1A) == HIGH) {
+    motor1DirMeas = (stateB == LOW) ? 1 : -1; // Forward if B is LOW, backward if B is HIGH
+  } else {
+    motor1DirMeas = (stateB == HIGH) ? 1 : -1; // Forward if B is HIGH, backward if B is LOW
   }
 
-  // if (motor1PositionMeas % 464 == 0) {
-  //   ledStatus = !ledStatus;
-  //   digitalWrite(PIN_LED_PWM, ledStatus);
-  // }
+  // Update pulse count
+  motor1PositionMeas += motor1DirMeas;
+
+    if (motor1PositionMeas % ENCODER_PULSES_PER_REVOLUTION == 0) {
+    ledStatus = !ledStatus;
+    digitalWrite(PIN_LED_PWM, ledStatus);
+  }
+}
+
+void handleMotor1EncoderB() {
+  // Read the state of channel A
+  int stateA = digitalRead(PIN_ENCODER1A);
+
+  // Determine the direction
+  if (digitalRead(PIN_ENCODER1B) == HIGH) {
+    motor1DirMeas = (stateA == HIGH) ? 1 : -1; // Forward if A is HIGH, backward if A is LOW
+  } else {
+    motor1DirMeas = (stateA == LOW) ? 1 : -1; // Forward if A is LOW, backward if A is HIGH
+  }
+
+  // Update pulse count
+  motor1PositionMeas += motor1DirMeas;
+
+  if (motor1PositionMeas % ENCODER_PULSES_PER_REVOLUTION == 0) {
+    ledStatus = !ledStatus;
+    digitalWrite(PIN_LED_PWM, ledStatus);
+  }
+}
+
+void handleMotor2EncoderA() {
+  // Read the state of channel B
+  int stateB = digitalRead(PIN_ENCODER2B);
+
+  // Determine the direction
+  if (digitalRead(PIN_ENCODER2A) == HIGH) {
+    motor2DirMeas = (stateB == LOW) ? 1 : -1; // Forward if B is LOW, backward if B is HIGH
+  } else {
+    motor2DirMeas = (stateB == HIGH) ? 1 : -1; // Forward if B is HIGH, backward if B is LOW
+  }
+
+  // Update pulse count
+  motor2PositionMeas += motor2DirMeas;
+}
+
+void handleMotor2EncoderB() {
+  // Read the state of channel A
+  int stateA = digitalRead(PIN_ENCODER2A);
+
+  // Determine the direction
+  if (digitalRead(PIN_ENCODER2B) == HIGH) {
+    motor2DirMeas = (stateA == HIGH) ? 1 : -1; // Forward if A is HIGH, backward if A is LOW
+  } else {
+    motor2DirMeas = (stateA == LOW) ? 1 : -1; // Forward if A is LOW, backward if A is HIGH
+  }
+
+  // Update pulse count
+  motor2PositionMeas += motor2DirMeas;
 }
  
 void setup(){
@@ -237,9 +315,16 @@ void setup(){
   ledcSetup(MOTOR2_PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);
   ledcAttachPin(PIN_MOTOR1_PWM, MOTOR1_PWM_CHANNEL);
   ledcAttachPin(PIN_MOTOR2_PWM, MOTOR2_PWM_CHANNEL);
-  ledcAttachPin(PIN_LED_PWM, MOTOR1_PWM_CHANNEL);
+//   ledcAttachPin(PIN_LED_PWM, MOTOR1_PWM_CHANNEL);
 
-  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER1A), updateMotor1Position, CHANGE);
+  // Set encoder pins as inputs
+  pinMode(PIN_ENCODER1A, INPUT);
+  pinMode(PIN_ENCODER1B, INPUT);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER1A), handleMotor1EncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER1B), handleMotor1EncoderB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2A), handleMotor2EncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2B), handleMotor2EncoderB, CHANGE);
+
 }
  
 // void loop(){
@@ -283,7 +368,6 @@ void setup(){
 
 
 void loop() {
-  // digitalWrite(PIN_LED_PWM, ledStatus);
 
   // ledcWrite(MOTOR1_PWM_CHANNEL, 0);        // set the Duty cycle out of 255
   // ledcWrite(MOTOR2_PWM_CHANNEL, 0);
