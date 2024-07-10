@@ -36,6 +36,8 @@ const bool MOTOR_1_FORWARD = true;
 const bool MOTOR_2_FORWARD = false;
 const bool MOTOR_COAST = false;
 const uint ENCODER_PULSES_PER_REVOLUTION = 464;
+const float WHEEL_DIAMETER = 0.0815;  // [m]
+const float DISTANCE_PER_PULSE = PI * WHEEL_DIAMETER / ENCODER_PULSES_PER_REVOLUTION;
 
 bool dirDrive = MOTOR_1_FORWARD;
 bool ledStatus = true;
@@ -45,9 +47,9 @@ const char STX = '!'; //'\x002';   // start of frame
 const char ETX = '@'; //'\x003';   // end of frame
 
 // state estimation
-volatile long motor1PositionMeas = 0;
+volatile long motor1EncoderPulses = 0;
 volatile int motor1DirMeas = 0;   // 0: stopped, 1: forward, -1: backward
-volatile long motor2PositionMeas = 0;
+volatile long motor2EncoderPulses = 0;
 volatile int motor2DirMeas = 0;
 
 typedef struct {
@@ -66,10 +68,12 @@ typedef struct {
     float pitch_est;
 
     // wheel encoder measurements
-    long motor1EncoderCount;
+    // float motor1DistanceMeas;
+    long motor1EncoderPulses;
     // unsigned char motor1DirMeas;
 
-    long motor2EncoderCount;
+    // float motor2DistanceMeas;
+    long motor2EncoderPulses;
     // unsigned char motor2DirMeas;
 
 } StateEstimatePacket_t;
@@ -142,9 +146,11 @@ void taskEstimateState(void * parameter) {
             stateEstimatePacket.pitch_accel = pitchAngleAccel;
             stateEstimatePacket.pitch_gyro = pitchAngleGyro;
             stateEstimatePacket.pitch_est = pitchAngleEst;
-            stateEstimatePacket.motor1EncoderCount = motor1PositionMeas;
+            stateEstimatePacket.motor1EncoderPulses = motor1EncoderPulses;
+            // stateEstimatePacket.motor1DistanceMeas = motor1EncoderPulses * DISTANCE_PER_PULSE;
             // stateEstimatePacket.motor1DirMeas = static_cast<signed char>(motor1DirMeas);
-            stateEstimatePacket.motor2EncoderCount = motor2PositionMeas;
+            stateEstimatePacket.motor2EncoderPulses = motor2EncoderPulses;
+            // stateEstimatePacket.motor2DistanceMeas = motor2EncoderPulses * DISTANCE_PER_PULSE;
             // stateEstimatePacket.motor2DirMeas = static_cast<signed char>(motor2DirMeas);
             
             Serial.write(STX);
@@ -197,9 +203,9 @@ void handleMotor1EncoderA() {
   }
 
   // Update pulse count
-  motor1PositionMeas += motor1DirMeas;
+  motor1EncoderPulses += motor1DirMeas;
 
-    if (motor1PositionMeas % ENCODER_PULSES_PER_REVOLUTION == 0) {
+    if (motor1EncoderPulses % ENCODER_PULSES_PER_REVOLUTION == 0) {
     ledStatus = !ledStatus;
     digitalWrite(PIN_LED_PWM, ledStatus);
   }
@@ -217,9 +223,9 @@ void handleMotor1EncoderB() {
   }
 
   // Update pulse count
-  motor1PositionMeas += motor1DirMeas;
+  motor1EncoderPulses += motor1DirMeas;
 
-  if (motor1PositionMeas % ENCODER_PULSES_PER_REVOLUTION == 0) {
+  if (motor1EncoderPulses % ENCODER_PULSES_PER_REVOLUTION == 0) {
     ledStatus = !ledStatus;
     digitalWrite(PIN_LED_PWM, ledStatus);
   }
@@ -237,7 +243,7 @@ void handleMotor2EncoderA() {
   }
 
   // Update pulse count
-  motor2PositionMeas += motor2DirMeas;
+  motor2EncoderPulses += motor2DirMeas;
 }
 
 void handleMotor2EncoderB() {
@@ -252,7 +258,7 @@ void handleMotor2EncoderB() {
   }
 
   // Update pulse count
-  motor2PositionMeas += motor2DirMeas;
+  motor2EncoderPulses += motor2DirMeas;
 }
  
 void setup(){

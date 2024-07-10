@@ -39,6 +39,10 @@ gyro_is_calibrated = False
 alpha = 0.98
 pitch_angle_est = 0
 
+wheel_diameter = 0.0815     # [m]
+pulses_per_revolution = 464
+distance_per_pulse = wheel_diameter * np.pi / pulses_per_revolution   # [m]
+
 while True:
     try:
         ser_bytes = ser.read(1)
@@ -100,8 +104,8 @@ while True:
         print(f'pitch angle accel [deg]: {pitch_angle_accel*180/np.pi:.2f}, '
               f'pitch angle gyro [deg]: {pitch_angle_gyro*180/np.pi:.2f}, '
               f'pitch angle est [deg]: {pitch_angle_est*180/np.pi:.2f}, '
-              f'motor1: {motor_1_encoder_count}, '
-              f'motor2: {motor_2_encoder_count}')
+              f'motor1 dist [m]: {motor_1_encoder_count * distance_per_pulse}, '
+              f'motor2 dist [m]: {motor_2_encoder_count * distance_per_pulse}')
             #   f'motor1: {motor_1_encoder_count} ({motor_1_dir_meas}), '
             #   f'motor2: {motor_2_encoder_count} ({motor_2_dir_meas})')
     except:
