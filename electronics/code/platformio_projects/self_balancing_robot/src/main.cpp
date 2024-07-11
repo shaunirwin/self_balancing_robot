@@ -70,10 +70,12 @@ typedef struct {
     // wheel encoder measurements
     // float motor1DistanceMeas;
     long motor1EncoderPulses;
+    long motor1EncoderPulsesDelta;
     // unsigned char motor1DirMeas;
 
     // float motor2DistanceMeas;
     long motor2EncoderPulses;
+    long motor2EncoderPulsesDelta;
     // unsigned char motor2DirMeas;
 
 } StateEstimatePacket_t;
@@ -118,6 +120,9 @@ void taskEstimateState(void * parameter) {
     StateEstimatePacket_t stateEstimatePacket;
     bool gyroOffsetCalculated = false;
     float gyroOffsetY = 0;                            // [deg/s]
+    long motor1EncoderPulsesLastUpdate = 0;       // pulses since last state estimator update
+    long motor2EncoderPulsesLastUpdate = 0;
+
     for (;;) {
         // Wait until data is available in the queue
         if (xQueueReceive(queueIMURaw, &imuPacket, portMAX_DELAY) == pdPASS) {
@@ -143,13 +148,21 @@ void taskEstimateState(void * parameter) {
 
             pitchAngleEst = ALPHA * (pitchAngleEst + deltaAngularRateGyro) + (1-ALPHA) * pitchAngleAccel;   // [rad]
 
+            // calculate angular velocity of each wheel
+            const long motor1EncoderPulsesDelta = motor1EncoderPulses - motor1EncoderPulsesLastUpdate;
+            const long motor2EncoderPulsesDelta = motor2EncoderPulses - motor2EncoderPulsesLastUpdate;
+            motor1EncoderPulsesLastUpdate = motor1EncoderPulses;
+            motor2EncoderPulsesLastUpdate = motor2EncoderPulses;
+
             stateEstimatePacket.pitch_accel = pitchAngleAccel;
             stateEstimatePacket.pitch_gyro = pitchAngleGyro;
             stateEstimatePacket.pitch_est = pitchAngleEst;
             stateEstimatePacket.motor1EncoderPulses = motor1EncoderPulses;
+            stateEstimatePacket.motor1EncoderPulsesDelta = motor1EncoderPulsesDelta;
             // stateEstimatePacket.motor1DistanceMeas = motor1EncoderPulses * DISTANCE_PER_PULSE;
             // stateEstimatePacket.motor1DirMeas = static_cast<signed char>(motor1DirMeas);
             stateEstimatePacket.motor2EncoderPulses = motor2EncoderPulses;
+            stateEstimatePacket.motor2EncoderPulsesDelta = motor2EncoderPulsesDelta;
             // stateEstimatePacket.motor2DistanceMeas = motor2EncoderPulses * DISTANCE_PER_PULSE;
             // stateEstimatePacket.motor2DirMeas = static_cast<signed char>(motor2DirMeas);
             
