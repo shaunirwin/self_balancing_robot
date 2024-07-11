@@ -36,8 +36,6 @@ const bool MOTOR_1_FORWARD = true;
 const bool MOTOR_2_FORWARD = false;
 const bool MOTOR_COAST = false;
 const uint ENCODER_PULSES_PER_REVOLUTION = 464;
-const float WHEEL_DIAMETER = 0.0815;  // [m]
-const float DISTANCE_PER_PULSE = PI * WHEEL_DIAMETER / ENCODER_PULSES_PER_REVOLUTION;
 
 bool dirDrive = MOTOR_1_FORWARD;
 bool ledStatus = true;
@@ -123,6 +121,13 @@ void taskEstimateState(void * parameter) {
     long motor1EncoderPulsesLastUpdate = 0;       // pulses since last state estimator update
     long motor2EncoderPulsesLastUpdate = 0;
 
+    const float WHEEL_DIAMETER = 0.0815;  // [m]
+    const float DISTANCE_PER_PULSE = PI * WHEEL_DIAMETER / ENCODER_PULSES_PER_REVOLUTION;
+    const uint WHEEL_VELOCITY_ESTIMATOR_TIME_STEPS = 25;  // number of time steps of the estimator period used to calculate wheel velocity over
+    uint wheel_velocity_estimator_step_count = WHEEL_VELOCITY_ESTIMATOR_TIME_STEPS;   // keep track of how many steps since last velocity measurement taken
+    long motor1EncoderPulsesDelta = 0;
+    long motor2EncoderPulsesDelta = 0;
+
     for (;;) {
         // Wait until data is available in the queue
         if (xQueueReceive(queueIMURaw, &imuPacket, portMAX_DELAY) == pdPASS) {
@@ -149,10 +154,17 @@ void taskEstimateState(void * parameter) {
             pitchAngleEst = ALPHA * (pitchAngleEst + deltaAngularRateGyro) + (1-ALPHA) * pitchAngleAccel;   // [rad]
 
             // calculate angular velocity of each wheel
-            const long motor1EncoderPulsesDelta = motor1EncoderPulses - motor1EncoderPulsesLastUpdate;
-            const long motor2EncoderPulsesDelta = motor2EncoderPulses - motor2EncoderPulsesLastUpdate;
-            motor1EncoderPulsesLastUpdate = motor1EncoderPulses;
-            motor2EncoderPulsesLastUpdate = motor2EncoderPulses;
+            wheel_velocity_estimator_step_count--;
+            if (wheel_velocity_estimator_step_count == 0)
+            {
+              motor1EncoderPulsesDelta = motor1EncoderPulses - motor1EncoderPulsesLastUpdate;
+              motor2EncoderPulsesDelta = motor2EncoderPulses - motor2EncoderPulsesLastUpdate;
+              motor1EncoderPulsesLastUpdate = motor1EncoderPulses;
+              motor2EncoderPulsesLastUpdate = motor2EncoderPulses;
+
+              // reset counter
+              wheel_velocity_estimator_step_count = WHEEL_VELOCITY_ESTIMATOR_TIME_STEPS;
+            }
 
             stateEstimatePacket.pitch_accel = pitchAngleAccel;
             stateEstimatePacket.pitch_gyro = pitchAngleGyro;
