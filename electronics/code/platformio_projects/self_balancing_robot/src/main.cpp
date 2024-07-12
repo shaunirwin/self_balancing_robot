@@ -231,7 +231,7 @@ void taskControlMotors(void * parameter) {
             myPID.Compute();
 
             double motorPerc = pid_output;
-            const bool motorDir = motorPerc > 0;
+            const bool motorDir = motorPerc < 0;
 
             // Ensure speed is within valid range
             // motorSpeed = constrain(motorSpeed, DUTY_CYCLE_MIN, DUTY_CYCLE_MAX);
@@ -255,10 +255,10 @@ void taskControlMotors(void * parameter) {
             const uint dutyCycle1 = dutyCycle; // + dutyCycleDiff;
             const uint dutyCycle2 = dutyCycle; // - dutyCycleDiff;
 
-            // ledcWrite(MOTOR1_PWM_CHANNEL, dutyCycle1);
-            // ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle2);
-            // digitalWrite(PIN_MOTOR1_DIR, motor1dir);
-            // digitalWrite(PIN_MOTOR2_DIR, motor2dir);
+            ledcWrite(MOTOR1_PWM_CHANNEL, dutyCycle1);
+            ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle2);
+            digitalWrite(PIN_MOTOR1_DIR, motor1dir);
+            digitalWrite(PIN_MOTOR2_DIR, motor2dir);
         }
   }
 }
