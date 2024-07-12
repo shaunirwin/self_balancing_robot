@@ -9,14 +9,25 @@ ser = serial.Serial(port='/dev/ttyACM0',
 
 ser.reset_input_buffer()
 
-receive_raw_imu_data = False
+msg_type = 'state_estimate'
 
-if receive_raw_imu_data:
-    msg_format = '<hhhhhh'      # imu raw data: accel {x,y,z}, gyro {x,y,z}
-else:
-    # msg_format = '<fff'         # state estimate data
-    msg_format = '<fffllll'         # state estimate data
-    # msg_format = '<ffflBlB'         # state estimate data
+    # float pitch_setpoint;
+    # float pitch_current;
+    # float pitch_error;
+
+    # float motorSpeed;
+    # int motorDir;
+    # uint dutyCycle;
+
+msg_formats = {
+    'raw_imu_data': '<hhhhhh',  # imu raw data: accel {x,y,z}, gyro {x,y,z}
+    'state_estimate': '<fffllll',
+    'control_packet': '<ff' #'<ffff' #'<ffffiI'
+}
+
+msg_format = msg_formats[msg_type]
+print('msg_format:', msg_format)
+
 msg_size = struct.calcsize(msg_format)        
 print('struct is this size [bytes]:', msg_size)
 
@@ -92,30 +103,50 @@ while True:
             pitch_angle_est = alpha * (pitch_angle_est + delta_angular_rate_gyro) + (1-alpha) * pitch_angle_accel
         else:
             data_unpacked = struct.unpack(msg_format, msg)
-            pitch_angle_accel = data_unpacked[0]
-            pitch_angle_gyro = data_unpacked[1]
-            pitch_angle_est = data_unpacked[2]
-            motor_1_encoder_count = data_unpacked[3]
-            motor_1_encoder_count_delta = data_unpacked[4]
-            motor_2_encoder_count = data_unpacked[5]
-            motor_2_encoder_count_delta = data_unpacked[6]
-            # motor_1_dir_meas = data_unpacked[4]
-            # motor_2_encoder_count = data_unpacked[5]
-            # motor_2_dir_meas = data_unpacked[6]
+            if msg_type == 'state_estimate':
+                pitch_angle_accel = data_unpacked[0]
+                pitch_angle_gyro = data_unpacked[1]
+                pitch_angle_est = data_unpacked[2]
+                motor_1_encoder_count = data_unpacked[3]
+                motor_1_encoder_count_delta = data_unpacked[4]
+                motor_2_encoder_count = data_unpacked[5]
+                motor_2_encoder_count_delta = data_unpacked[6]
+                # motor_1_dir_meas = data_unpacked[4]
+                # motor_2_encoder_count = data_unpacked[5]
+                # motor_2_dir_meas = data_unpacked[6]
 
-        wheel_1_vel = motor_1_encoder_count_delta * distance_per_pulse * imu_sample_freq / wheel_velocity_measurement_timesteps     # [m/s]
-        wheel_2_vel = motor_2_encoder_count_delta * distance_per_pulse * imu_sample_freq / wheel_velocity_measurement_timesteps     # [m/s]
-                
-        #print(accel_xyz, gyro_xyz, pitch_angle_accel*180/np.pi) #, msg)#, ser_bytes.decode("utf-8"))
-        print(f'pitch angle accel [deg]: {pitch_angle_accel*180/np.pi:+3.2f}, '
-              f'pitch angle gyro [deg]: {pitch_angle_gyro*180/np.pi:+3.2f}, '
-              f'pitch angle est [deg]: {pitch_angle_est*180/np.pi:+3.2f}, '
-              f'wheel1 dist [m]: {motor_1_encoder_count * distance_per_pulse:+3.3f}, '
-              f'wheel2 dist [m]: {motor_2_encoder_count * distance_per_pulse:+3.3f}, '
-              f'wheel1 vel [m/s]: {wheel_1_vel:+1.3f}, '
-              f'wheel2 vel [m/s]: {wheel_2_vel:+1.3f}')
-            #   f'motor1: {motor_1_encoder_count} ({motor_1_dir_meas}), '
-            #   f'motor2: {motor_2_encoder_count} ({motor_2_dir_meas})')
+                wheel_1_vel = motor_1_encoder_count_delta * distance_per_pulse * imu_sample_freq / wheel_velocity_measurement_timesteps     # [m/s]
+                wheel_2_vel = motor_2_encoder_count_delta * distance_per_pulse * imu_sample_freq / wheel_velocity_measurement_timesteps     # [m/s]
+                        
+                #print(accel_xyz, gyro_xyz, pitch_angle_accel*180/np.pi) #, msg)#, ser_bytes.decode("utf-8"))
+                print(f'pitch angle accel [deg]: {pitch_angle_accel*180/np.pi:+3.2f}, '
+                    f'pitch angle gyro [deg]: {pitch_angle_gyro*180/np.pi:+3.2f}, '
+                    f'pitch angle est [deg]: {pitch_angle_est*180/np.pi:+3.2f}, '
+                    f'wheel1 dist [m]: {motor_1_encoder_count * distance_per_pulse:+3.3f}, '
+                    f'wheel2 dist [m]: {motor_2_encoder_count * distance_per_pulse:+3.3f}, '
+                    f'wheel1 vel [m/s]: {wheel_1_vel:+1.3f}, '
+                    f'wheel2 vel [m/s]: {wheel_2_vel:+1.3f}')
+                    #   f'motor1: {motor_1_encoder_count} ({motor_1_dir_meas}), '
+                    #   f'motor2: {motor_2_encoder_count} ({motor_2_dir_meas})')
+            elif msg_type == 'control_packet':
+                pitch_setpoint = data_unpacked[0]
+                pitch_current = data_unpacked[1]
+                # pitch_error = data_unpacked[2]
+                # motorSpeed = data_unpacked[3]
+                # motorDir = data_unpacked[4]
+                # dutyCycle = data_unpacked[5]
+
+                pitch_error = -1.
+                motorSpeed = -1.
+                motorDir = -1.
+                dutyCycle = -1.
+
+                print(f'pitch_setpoint [deg]: {pitch_setpoint*180/np.pi:+3.2f}, '
+                    f'pitch_current [deg]: {pitch_current*180/np.pi:+3.2f}, '
+                    f'pitch_error [deg]: {pitch_error*180/np.pi:+3.2f}, '
+                    f'motorSpeed []: {motorSpeed:+3.2f}, '
+                    f'motorDir: {motorDir:+1d}, '
+                    f'dutyCycle: {dutyCycle:+3.2f}')
     except:
         print("Keyboard Interrupt")
         
