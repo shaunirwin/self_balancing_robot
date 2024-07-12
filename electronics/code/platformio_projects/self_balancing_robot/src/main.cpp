@@ -105,12 +105,12 @@ QueueHandle_t queueIMURaw;  // queue of raw IMU measurements
 QueueHandle_t queueStateEstimates;  // queue of state estimates
 
 // PID constants
-double Kp = 2.0;
+double Kp = 5.0;
 double Ki = 0.0;
 double Kd = 0.0;
 
 // PID variables
-double pitch_angle_setpoint = 0.0;  // desired pitch angle [rad]
+double pitch_angle_setpoint = -6.0*PI/180;  // desired pitch angle [rad]
 double pitch_angle_current = 0;        // current pitch angle [rad]
 double pid_output = 0;       // PID output (speed of motors)
 
@@ -217,8 +217,9 @@ void taskControlMotors(void * parameter) {
   StateEstimatePacket_t stateEstimatePacket;
   ControlPacket_t controlPacket;
 
-  const uint DUTY_CYCLE_MIN = 25; //40;
-  const uint DUTY_CYCLE_MAX = 80;      // conservative for now. Can be as high as 255
+  const uint DUTY_CYCLE_MIN = 35;
+  const uint DUTY_CYCLE_MAX = 150;      // conservative for now. Can be as high as 255
+  const float PITCH_ANGLE_ERROR_MAX = 28.f*PI/180.f;   // maximum pitch angle error before motors cut off
   
   for (;;) {
         // Wait until data is available in the queue
@@ -233,9 +234,10 @@ void taskControlMotors(void * parameter) {
             double motorPerc = pid_output;
             const bool motorDir = motorPerc < 0;
 
-            // Ensure speed is within valid range
-            // motorSpeed = constrain(motorSpeed, DUTY_CYCLE_MIN, DUTY_CYCLE_MAX);
-            const uint dutyCycle = static_cast<uint>(static_cast<double>(DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * abs(motorPerc) + static_cast<double>(DUTY_CYCLE_MIN));
+            const bool pitch_error_exceeded = abs(pitch_angle_current - pitch_angle_setpoint) >= PITCH_ANGLE_ERROR_MAX;
+            const bool motor_power_too_low = abs(motorPerc) < 0.05;
+            const bool disable_motors = pitch_error_exceeded || motor_power_too_low;
+            const uint dutyCycle = disable_motors ? 0 : static_cast<uint>(static_cast<double>(DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * abs(motorPerc) + static_cast<double>(DUTY_CYCLE_MIN));
 
             controlPacket.pitch_setpoint = static_cast<float>(pitch_angle_setpoint);
             controlPacket.pitch_current = static_cast<float>(pitch_angle_current);
