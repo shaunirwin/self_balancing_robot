@@ -132,7 +132,7 @@ while True:
                 pitch_setpoint = data_unpacked[0]
                 pitch_current = data_unpacked[1]
                 pitch_error = data_unpacked[2]
-                motorSpeed = data_unpacked[3]
+                motorPerc = data_unpacked[3]
                 motorDir = data_unpacked[4]
                 dutyCycle = data_unpacked[5]
 
@@ -146,7 +146,7 @@ while True:
                 print(f'pitch_setpoint [deg]: {pitch_setpoint*180/np.pi:+3.2f}, '
                     f'pitch_current [deg]: {pitch_current*180/np.pi:+3.2f}, '
                     f'pitch_error [deg]: {pitch_error*180/np.pi:+3.2f}, '
-                    f'motorSpeed []: {motorSpeed:+3.2f}, '
+                    f'motorPerc []: {motorPerc:+3.2f}, '
                     f'motorDir: {motorDir:+1d}, '
                     f'dutyCycle: {dutyCycle:+3.2f}')
     except:

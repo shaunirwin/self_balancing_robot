@@ -4,6 +4,7 @@
 // for both classes must be in the include path of your project
 #include "I2Cdev.h"
 #include "MPU6050.h"
+#include <PID_v1.h>
 
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
@@ -102,7 +103,19 @@ volatile SemaphoreHandle_t timerSemaphore;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 QueueHandle_t queueIMURaw;  // queue of raw IMU measurements
 QueueHandle_t queueStateEstimates;  // queue of state estimates
-//uint16_t pulses_count = 0;    // for testing
+
+// PID constants
+double Kp = 2.0;
+double Ki = 0.0;
+double Kd = 0.0;
+
+// PID variables
+double pitch_angle_setpoint = 0.0;  // desired pitch angle [rad]
+double pitch_angle_current = 0;        // current pitch angle [rad]
+double pid_output = 0;       // PID output (speed of motors)
+
+// PID controller
+PID myPID(&pitch_angle_current, &pid_output, &pitch_angle_setpoint, Kp, Ki, Kd, DIRECT);
 
 void IRAM_ATTR stateEstimatorTimer(){
   // Give the semaphore to unblock the task
@@ -202,25 +215,36 @@ void taskEstimateState(void * parameter) {
 
 void taskControlMotors(void * parameter) {
   StateEstimatePacket_t stateEstimatePacket;
-  const uint DUTY_CYCLE_MIN = 20; //40;
   ControlPacket_t controlPacket;
+
+  const uint DUTY_CYCLE_MIN = 25; //40;
   const uint DUTY_CYCLE_MAX = 120;      // conservative for now. Can be as high as 255
   const float PITCH_ANGLE_MAX = 35.f*PI/180;    // rad
   float pitchAngleSetpoint = -4.f*PI/180;       // rad
+  
   for (;;) {
         // Wait until data is available in the queue
         if (xQueueReceive(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) == pdPASS) {
             const float pitchAngleEst = stateEstimatePacket.pitch_est;
-            const float pitchAngleErr = pitchAngleEst - pitchAngleSetpoint;
-            const float motorPerc = min(abs(pitchAngleErr), PITCH_ANGLE_MAX) / PITCH_ANGLE_MAX;
-            const bool motorDir = pitchAngleErr > 0;
-            const uint dutyCycle = (DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * motorPerc + DUTY_CYCLE_MIN;
-            controlPacket.pitch_setpoint = 12.f;
-            controlPacket.pitch_current = 13.f;
-            controlPacket.pitch_error = 14.f;
-            controlPacket.motorSpeed = 15.f;
-            controlPacket.motorDir = 27; //static_cast<int>(motorDir);
-            controlPacket.dutyCycle = 55; //dutyCycle;
+
+            pitch_angle_current = static_cast<double>(pitchAngleEst);
+
+            // Compute the PID output
+            myPID.Compute();
+
+            double motorPerc = pid_output;
+            const bool motorDir = motorPerc > 0;
+
+            // Ensure speed is within valid range
+            // motorSpeed = constrain(motorSpeed, DUTY_CYCLE_MIN, DUTY_CYCLE_MAX);
+            const uint dutyCycle = static_cast<uint>(static_cast<double>(DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * abs(motorPerc) + static_cast<double>(DUTY_CYCLE_MIN));
+
+            controlPacket.pitch_setpoint = static_cast<float>(pitch_angle_setpoint);
+            controlPacket.pitch_current = static_cast<float>(pitch_angle_current);
+            controlPacket.pitch_error = static_cast<float>(pitch_angle_current - pitch_angle_setpoint);
+            controlPacket.motorSpeed = static_cast<float>(motorPerc);
+            controlPacket.motorDir = static_cast<int>(motorDir);
+            controlPacket.dutyCycle = dutyCycle;
 
             Serial.write(STX);
             Serial.write( (uint8_t *) &controlPacket, sizeof( controlPacket ) );
@@ -229,10 +253,14 @@ void taskControlMotors(void * parameter) {
             const bool motor1dir = motorDir;
             const bool motor2dir = !motorDir;
 
-            ledcWrite(MOTOR1_PWM_CHANNEL, dutyCycle);
-            ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle);
-            digitalWrite(PIN_MOTOR1_DIR, motor1dir);
-            digitalWrite(PIN_MOTOR2_DIR, motor2dir);
+            // adjust the PWM to each motor independently to ensure speed is equal
+            const uint dutyCycle1 = dutyCycle; // + dutyCycleDiff;
+            const uint dutyCycle2 = dutyCycle; // - dutyCycleDiff;
+
+            // ledcWrite(MOTOR1_PWM_CHANNEL, dutyCycle1);
+            // ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle2);
+            // digitalWrite(PIN_MOTOR1_DIR, motor1dir);
+            // digitalWrite(PIN_MOTOR2_DIR, motor2dir);
         }
   }
 }
@@ -377,6 +405,9 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2A), handleMotor2EncoderA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2B), handleMotor2EncoderB, CHANGE);
 
+  myPID.SetMode(AUTOMATIC);
+  myPID.SetOutputLimits(-1., 1);  // -100% to 100% for motor power
+  myPID.SetSampleTime(4);   // ms
 }
  
 // void loop(){
