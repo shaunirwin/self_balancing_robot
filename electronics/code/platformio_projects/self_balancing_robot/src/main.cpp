@@ -218,9 +218,7 @@ void taskControlMotors(void * parameter) {
   ControlPacket_t controlPacket;
 
   const uint DUTY_CYCLE_MIN = 25; //40;
-  const uint DUTY_CYCLE_MAX = 120;      // conservative for now. Can be as high as 255
-  const float PITCH_ANGLE_MAX = 35.f*PI/180;    // rad
-  float pitchAngleSetpoint = -4.f*PI/180;       // rad
+  const uint DUTY_CYCLE_MAX = 80;      // conservative for now. Can be as high as 255
   
   for (;;) {
         // Wait until data is available in the queue
