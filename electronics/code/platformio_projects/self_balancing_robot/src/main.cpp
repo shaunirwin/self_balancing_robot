@@ -78,6 +78,17 @@ typedef struct {
 
 } StateEstimatePacket_t;
 
+typedef struct {
+    float pitch_setpoint;
+    float pitch_current;
+    float pitch_error;
+
+    float motorSpeed;
+    int motorDir;
+    uint dutyCycle;
+
+} ControlPacket_t;
+
 float accel_resolution = 0;
 float gyro_resolution = 0;
 float pitchAngleGyro = 0;             // [rad]
@@ -178,9 +189,9 @@ void taskEstimateState(void * parameter) {
             // stateEstimatePacket.motor2DistanceMeas = motor2EncoderPulses * DISTANCE_PER_PULSE;
             // stateEstimatePacket.motor2DirMeas = static_cast<signed char>(motor2DirMeas);
             
-            Serial.write(STX);
-            Serial.write( (uint8_t *) &stateEstimatePacket, sizeof( stateEstimatePacket ) );
-            Serial.write(ETX);
+            // Serial.write(STX);
+            // Serial.write( (uint8_t *) &stateEstimatePacket, sizeof( stateEstimatePacket ) );
+            // Serial.write(ETX);
 
             if (xQueueSend(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) != pdPASS) {
                 Serial.println("Failed to send to state estimate queue");
@@ -192,6 +203,7 @@ void taskEstimateState(void * parameter) {
 void taskControlMotors(void * parameter) {
   StateEstimatePacket_t stateEstimatePacket;
   const uint DUTY_CYCLE_MIN = 20; //40;
+  ControlPacket_t controlPacket;
   const uint DUTY_CYCLE_MAX = 120;      // conservative for now. Can be as high as 255
   const float PITCH_ANGLE_MAX = 35.f*PI/180;    // rad
   float pitchAngleSetpoint = -4.f*PI/180;       // rad
@@ -203,7 +215,16 @@ void taskControlMotors(void * parameter) {
             const float motorPerc = min(abs(pitchAngleErr), PITCH_ANGLE_MAX) / PITCH_ANGLE_MAX;
             const bool motorDir = pitchAngleErr > 0;
             const uint dutyCycle = (DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * motorPerc + DUTY_CYCLE_MIN;
+            controlPacket.pitch_setpoint = 12.f;
+            controlPacket.pitch_current = 13.f;
+            controlPacket.pitch_error = 14.f;
+            controlPacket.motorSpeed = 15.f;
+            controlPacket.motorDir = 27; //static_cast<int>(motorDir);
+            controlPacket.dutyCycle = 55; //dutyCycle;
 
+            Serial.write(STX);
+            Serial.write( (uint8_t *) &controlPacket, sizeof( controlPacket ) );
+            Serial.write(ETX);
             // invert direction to specific motors in case wires are switched
             const bool motor1dir = motorDir;
             const bool motor2dir = !motorDir;

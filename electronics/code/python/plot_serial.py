@@ -9,7 +9,7 @@ ser = serial.Serial(port='/dev/ttyACM0',
 
 ser.reset_input_buffer()
 
-msg_type = 'state_estimate'
+msg_type = 'control_packet'
 
     # float pitch_setpoint;
     # float pitch_current;
@@ -22,7 +22,7 @@ msg_type = 'state_estimate'
 msg_formats = {
     'raw_imu_data': '<hhhhhh',  # imu raw data: accel {x,y,z}, gyro {x,y,z}
     'state_estimate': '<fffllll',
-    'control_packet': '<ff' #'<ffff' #'<ffffiI'
+    'control_packet': '<ffffiI'
 }
 
 msg_format = msg_formats[msg_type]
@@ -131,15 +131,17 @@ while True:
             elif msg_type == 'control_packet':
                 pitch_setpoint = data_unpacked[0]
                 pitch_current = data_unpacked[1]
-                # pitch_error = data_unpacked[2]
-                # motorSpeed = data_unpacked[3]
-                # motorDir = data_unpacked[4]
-                # dutyCycle = data_unpacked[5]
+                pitch_error = data_unpacked[2]
+                motorSpeed = data_unpacked[3]
+                motorDir = data_unpacked[4]
+                dutyCycle = data_unpacked[5]
 
-                pitch_error = -1.
-                motorSpeed = -1.
-                motorDir = -1.
-                dutyCycle = -1.
+                # print(f'pitch_setpoint [deg]: {pitch_setpoint:+3.2f}, '
+                #     f'pitch_current [deg]: {pitch_current:+3.2f}, '
+                #     f'pitch_error [deg]: {pitch_error:+3.2f}, '
+                #     f'motorSpeed []: {motorSpeed:+3.2f}, '
+                #     f'motorDir: {motorDir:+1d}, '
+                #     f'dutyCycle: {dutyCycle:+3.2f}')
 
                 print(f'pitch_setpoint [deg]: {pitch_setpoint*180/np.pi:+3.2f}, '
                     f'pitch_current [deg]: {pitch_current*180/np.pi:+3.2f}, '
