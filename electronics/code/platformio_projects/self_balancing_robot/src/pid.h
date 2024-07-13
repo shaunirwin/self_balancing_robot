@@ -4,13 +4,13 @@
 class PropIntDiff {
 
     public:                 
-        volatile float ITerm, lastInput, dInput, Output;
-        volatile float kp, ki, kd;
-        volatile float error, MIN, MAX, ITermThreshold;
+        volatile double ITerm, lastInput, dInput, Output;
+        volatile double kp, ki, kd;
+        volatile double error, MIN, MAX, ITermThreshold;
         bool inAuto;    
 
-        PropIntDiff(float MINlimit, float MAXlimit, float Threshold);
+        PropIntDiff(double MINlimit, double MAXlimit, double Threshold);
         void initialize();
-        void calculate(float Setpoint, float Input);
-        void calculate(float Setpoint, float Input, float dInput);
+        void calculate(double Setpoint, double Input);
+        void calculate(double Setpoint, double Input, double dInput);
 };
