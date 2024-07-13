@@ -1,8 +1,7 @@
 #include <iostream>
 #include <string>
-#include <Arduino.h>
 
-#include "secrets.h"
+#include <Arduino.h>
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
@@ -18,6 +17,8 @@
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
     #include "Wire.h"
 #endif
+
+#include "secrets.h"
 
 MPU6050 imu;
 AsyncWebServer server(80);
@@ -111,6 +112,11 @@ volatile SemaphoreHandle_t timerSemaphore;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 QueueHandle_t queueIMURaw;  // queue of raw IMU measurements
 QueueHandle_t queueStateEstimates;  // queue of state estimates
+
+uint DUTY_CYCLE_MIN = 35;
+uint DUTY_CYCLE_MAX = 255;      // conservative for now. Can be as high as 255
+float PITCH_ANGLE_ERROR_MAX = 28.f*PI/180.f;   // maximum pitch angle error before motors cut off
+float PITCH_ANGLE_ERROR_MIN = 1.f*PI/180.f;   // minimumpitch angle error before motors cut off
 
 // PID constants
 double Kp = 6.5;
@@ -224,11 +230,6 @@ void taskEstimateState(void * parameter) {
 void taskControlMotors(void * parameter) {
   StateEstimatePacket_t stateEstimatePacket;
   ControlPacket_t controlPacket;
-
-  const uint DUTY_CYCLE_MIN = 35;
-  const uint DUTY_CYCLE_MAX = 255;      // conservative for now. Can be as high as 255
-  const float PITCH_ANGLE_ERROR_MAX = 28.f*PI/180.f;   // maximum pitch angle error before motors cut off
-  const float PITCH_ANGLE_ERROR_MIN = 1.f*PI/180.f;   // minimumpitch angle error before motors cut off
   
   for (;;) {
         // Wait until data is available in the queue
@@ -366,6 +367,52 @@ void initWiFi() {
   ledcWrite(PIN_LED_PWM, ledStatus);
 }
 
+bool convertStringToDouble(const String &value, double &result) {
+  char* end;
+  result = strtod(value.c_str(), &end);
+
+  // Check if the conversion was successful
+  if (*end == '\0') {
+    return true;
+  }
+
+  return false;
+}
+
+bool convertStringToFloat(const String &value, float &result) {
+  char* end;
+  result = strtof(value.c_str(), &end);
+
+  // Check if the conversion was successful
+  if (*end == '\0') {
+    return true;
+  }
+
+  return false;
+}
+
+
+// Does not currently handle negative values: will return a huge number
+bool convertStringToUint(const String &value, uint &result) {
+  char* end;
+  unsigned long tempResult = strtoul(value.c_str(), &end, 10);
+
+  // Check if there were any non-numeric characters in the string
+  if (*end != '\0') {
+    Serial.println("Error: The string contains non-numeric characters.");
+    return false;
+  }
+
+  // Check if the result fits into an unsigned int
+  if (tempResult > std::numeric_limits<unsigned int>::max()) {
+    Serial.println("Error: The value is too large to fit in an unsigned int.");
+    return false;
+  }
+
+  result = static_cast<unsigned int>(tempResult);
+  return true;
+}
+
 void initWebserver() {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     // Create a JSON document
@@ -380,35 +427,124 @@ void initWebserver() {
     request->send(200, "application/json", jsonString);
   });
 
-  server.on("/set-pid-kp", HTTP_POST, [](AsyncWebServerRequest *request) {
-    if (request->hasParam("value", true)) {
-      AsyncWebParameter* p = request->getParam("value", true);
-      String value = p->value();
-      char* end;
-      double tempDouble = strtod(value.c_str(), &end);
+  server.on("/set-value", HTTP_POST, [](AsyncWebServerRequest *request) {
+    // std::set<String> keys {"PID_Kp", "PID_Ki", "PID_Kd"}; //, "MOTOR_DUTY_CYCLE_MIN", "MOTOR_DUTY_CYCLE_MAX"};
+    String key {""};
+    String value {""};
 
-      // Check if the conversion was successful
-      if (*end == '\0') {
-        Kp = tempDouble;
-
-        // Create a JSON document for the response
-        JsonDocument jsonDoc;
-        jsonDoc["status"] = "success";
-        jsonDoc["message"] = "Kp variable updated";
-        jsonDoc["value"] = Kp;
-
-        // Serialize JSON document to a string
-        String jsonString;
-        serializeJson(jsonDoc, jsonString);
-
-        // Send JSON response
-        request->send(200, "application/json", jsonString);
-      } else {
-        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid float value\"}");
+    {
+      if (!request->hasParam("key", true)) {
+        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing key parameter\"}");
+        return;   // is this needed?
       }
-    } else {
-      request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing value parameter\"}");
+      AsyncWebParameter* p = request->getParam("key", true);
+      key = p->value();
     }
+
+    {
+      if (!request->hasParam("value", true)) {
+        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing value parameter\"}");
+        return;   // is this needed?
+      }
+      AsyncWebParameter* p = request->getParam("value", true);
+      value = p->value();
+    }
+
+    JsonDocument jsonDoc;
+    jsonDoc["status"] = "success";
+    jsonDoc["message"] = "Variable updated";
+    jsonDoc["key"] = key;
+    bool convertedSuccessfully {false};
+
+    if (key == "PID_Kp") {
+      double temp;
+      convertedSuccessfully = convertStringToDouble(value, temp);
+
+      if (convertedSuccessfully) {
+        Kp = temp;
+        jsonDoc["value"] = Kp;
+      }
+    }
+    else if (key == "PID_Ki") {
+      double temp;
+      convertedSuccessfully = convertStringToDouble(value, temp);
+
+      if (convertedSuccessfully) {
+        Ki = temp;
+        jsonDoc["value"] = Ki;
+      }
+    }
+    else if (key == "PID_Kd") {
+      double temp;
+      convertedSuccessfully = convertStringToDouble(value, temp);
+
+      if (convertedSuccessfully) {
+        Kd = temp;
+        jsonDoc["value"] = Kd;
+      }
+    }
+    else if (key == "PID_setpoint") {
+      double temp;
+      convertedSuccessfully = convertStringToDouble(value, temp) && (temp >= -25.) && (temp <= 25.);
+
+      if (convertedSuccessfully) {
+        pitch_angle_setpoint = temp;
+        jsonDoc["value"] = pitch_angle_setpoint;
+      }
+    }
+    else if (key == "MOTOR_DUTY_CYCLE_MIN") {
+      uint temp;
+      convertedSuccessfully = convertStringToUint(value, temp) && (temp >= 0) && (temp <= 255);
+
+      if (convertedSuccessfully) {
+        DUTY_CYCLE_MIN = temp;
+        jsonDoc["value"] = DUTY_CYCLE_MIN;
+      }
+    }
+    else if (key == "MOTOR_DUTY_CYCLE_MAX") {
+      uint temp;
+      convertedSuccessfully = convertStringToUint(value, temp) && (temp >= 0) && (temp <= 255);
+
+      if (convertedSuccessfully) {
+        DUTY_CYCLE_MAX = temp;
+        jsonDoc["value"] = DUTY_CYCLE_MAX;
+      }
+    }
+    else if (key == "PITCH_ANGLE_ERROR_MAX") {
+      float temp;
+      convertedSuccessfully = convertStringToFloat(value, temp) && (temp >= 5.) && (temp <= 35.);
+
+      if (convertedSuccessfully) {
+        PITCH_ANGLE_ERROR_MAX = temp;
+        jsonDoc["value"] = PITCH_ANGLE_ERROR_MAX;
+      }
+    }
+    else if (key == "PITCH_ANGLE_ERROR_MIN") {
+      float temp;
+      convertedSuccessfully = convertStringToFloat(value, temp) && (temp >= 0) && (temp <= 45.);
+
+      if (convertedSuccessfully) {
+        PITCH_ANGLE_ERROR_MIN = temp;
+        jsonDoc["value"] = PITCH_ANGLE_ERROR_MIN;
+      }
+    }
+    else {
+      request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Key invalid\"}");
+      return;   // is this needed?
+    }
+
+    if (!convertedSuccessfully) {
+      request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid value type\"}");
+      return;   // is this needed?
+    }
+
+    // Serialize JSON document to a string
+    String jsonString;
+    serializeJson(jsonDoc, jsonString);
+
+    // Send JSON response
+    request->send(200, "application/json", jsonString);
+    
   });
 
   // Start the server
