@@ -1,5 +1,7 @@
 #include <Arduino.h>
 
+#include "secrets.h"
+#include <WiFi.h>
 // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
 // for both classes must be in the include path of your project
 #include "I2Cdev.h"
@@ -336,6 +338,28 @@ void handleMotor2EncoderB() {
   // Update pulse count
   motor2EncoderPulses += motor2DirMeas;
 }
+
+void initWiFi() {
+  WiFi.mode(WIFI_STA);    //Set Wi-Fi Mode as station
+  WiFi.begin(ssid, password);   
+
+  Serial.println("Connecting to WiFi ..");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print('.');
+    delay(1000);
+
+    ledcWrite(PIN_LED_PWM, ledStatus);
+    ledStatus = !ledStatus;
+  }
+
+  Serial.println(WiFi.localIP());
+  Serial.print("RRSI: ");
+  Serial.println(WiFi.RSSI());
+
+  ledStatus = true;
+  ledcWrite(PIN_LED_PWM, ledStatus);
+
+}
  
 void setup(){
   Serial.begin(115200);
@@ -410,6 +434,9 @@ void setup(){
   myPID.SetMode(AUTOMATIC);
   myPID.SetOutputLimits(-1., 1);  // -100% to 100% for motor power
   myPID.SetSampleTime(4);   // ms
+
+
+  initWiFi();
 }
  
 // void loop(){
