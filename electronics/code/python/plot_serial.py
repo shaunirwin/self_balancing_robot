@@ -21,7 +21,7 @@ msg_type = 'control_packet'
 
 msg_formats = {
     'raw_imu_data': '<hhhhhh',  # imu raw data: accel {x,y,z}, gyro {x,y,z}
-    'state_estimate': '<fffllll',
+    'state_estimate': '<fffllllf',
     'control_packet': '<ffffiI'
 }
 
@@ -114,6 +114,7 @@ while True:
                 # motor_1_dir_meas = data_unpacked[4]
                 # motor_2_encoder_count = data_unpacked[5]
                 # motor_2_dir_meas = data_unpacked[6]
+                pitch_angular_vel_meas = data_unpacked[7]
 
                 wheel_1_vel = motor_1_encoder_count_delta * distance_per_pulse * imu_sample_freq / wheel_velocity_measurement_timesteps     # [m/s]
                 wheel_2_vel = motor_2_encoder_count_delta * distance_per_pulse * imu_sample_freq / wheel_velocity_measurement_timesteps     # [m/s]
@@ -125,7 +126,8 @@ while True:
                     f'wheel1 dist [m]: {motor_1_encoder_count * distance_per_pulse:+3.3f}, '
                     f'wheel2 dist [m]: {motor_2_encoder_count * distance_per_pulse:+3.3f}, '
                     f'wheel1 vel [m/s]: {wheel_1_vel:+1.3f}, '
-                    f'wheel2 vel [m/s]: {wheel_2_vel:+1.3f}')
+                    f'wheel2 vel [m/s]: {wheel_2_vel:+3.2f}, '
+                    f'pitch angular vel [deg/s]: {pitch_angular_vel_meas:+1.3f}')
                     #   f'motor1: {motor_1_encoder_count} ({motor_1_dir_meas}), '
                     #   f'motor2: {motor_2_encoder_count} ({motor_2_dir_meas})')
             elif msg_type == 'control_packet':

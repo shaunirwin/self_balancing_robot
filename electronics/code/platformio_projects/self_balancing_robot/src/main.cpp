@@ -10,7 +10,6 @@
 // for both classes must be in the include path of your project
 #include "I2Cdev.h"
 #include "MPU6050.h"
-#include <PID_v1.h>
 
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
@@ -19,6 +18,7 @@
 #endif
 
 #include "secrets.h"
+#include "pid.h"
 
 MPU6050 imu;
 AsyncWebServer server(80);
@@ -70,21 +70,24 @@ typedef struct {
 } IMUPacket_t;
 
 typedef struct {
-    // IMU estimates
-    float pitch_accel;
-    float pitch_gyro;
-    float pitch_est;
+  // IMU estimates
+  float pitch_accel;
+  float pitch_gyro;
+  float pitch_est;
 
-    // wheel encoder measurements
-    // float motor1DistanceMeas;
-    long motor1EncoderPulses;
-    long motor1EncoderPulsesDelta;
-    // unsigned char motor1DirMeas;
+  // wheel encoder measurements
+  // float motor1DistanceMeas;
+  long motor1EncoderPulses;
+  long motor1EncoderPulsesDelta;
+  // unsigned char motor1DirMeas;
 
-    // float motor2DistanceMeas;
-    long motor2EncoderPulses;
-    long motor2EncoderPulsesDelta;
-    // unsigned char motor2DirMeas;
+  // float motor2DistanceMeas;
+  long motor2EncoderPulses;
+  long motor2EncoderPulsesDelta;
+  // unsigned char motor2DirMeas;
+
+  // gyro angular velocity measurement
+  float pitch_velocity_gyro;
 
 } StateEstimatePacket_t;
 
@@ -115,21 +118,15 @@ QueueHandle_t queueStateEstimates;  // queue of state estimates
 
 uint DUTY_CYCLE_MIN = 35;
 uint DUTY_CYCLE_MAX = 255;      // conservative for now. Can be as high as 255
-float PITCH_ANGLE_ERROR_MAX = 28.f*PI/180.f;   // maximum pitch angle error before motors cut off
+float PITCH_ANGLE_ERROR_MAX = 25.f*PI/180.f;   // maximum pitch angle error before motors cut off
 float PITCH_ANGLE_ERROR_MIN = 1.f*PI/180.f;   // minimumpitch angle error before motors cut off
-
-// PID constants
-double Kp = 6.5;
-double Ki = 0.0;
-double Kd = 0.0;
 
 // PID variables
 double pitch_angle_setpoint = -7.0*PI/180;  // desired pitch angle [rad]
 double pitch_angle_current = 0;        // current pitch angle [rad]
-double pid_output = 0;       // PID output (speed of motors)
 
 // PID controller
-PID myPID(&pitch_angle_current, &pid_output, &pitch_angle_setpoint, Kp, Ki, Kd, DIRECT);
+PropIntDiff pid(-1., 1., 1.);
 
 void IRAM_ATTR stateEstimatorTimer(){
   // Give the semaphore to unblock the task
@@ -215,6 +212,7 @@ void taskEstimateState(void * parameter) {
             stateEstimatePacket.motor2EncoderPulsesDelta = motor2EncoderPulsesDelta;
             // stateEstimatePacket.motor2DistanceMeas = motor2EncoderPulses * DISTANCE_PER_PULSE;
             // stateEstimatePacket.motor2DirMeas = static_cast<signed char>(motor2DirMeas);
+            stateEstimatePacket.pitch_velocity_gyro = deltaAngularRateGyro;   // TODO: should it be -pitchAngularRateGyro instead?
             
             // Serial.write(STX);
             // Serial.write( (uint8_t *) &stateEstimatePacket, sizeof( stateEstimatePacket ) );
@@ -239,9 +237,9 @@ void taskControlMotors(void * parameter) {
             pitch_angle_current = static_cast<double>(pitchAngleEst);
 
             // Compute the PID output
-            myPID.Compute();
+            pid.calculate(pitch_angle_setpoint, pitch_angle_current, stateEstimatePacket.pitch_velocity_gyro);
 
-            const double motorPerc = pid_output;
+            const double motorPerc = pid.Output;
             const bool motorDir = motorPerc < 0;
 
             const bool pitch_error_exceeded = abs(pitch_angle_current - pitch_angle_setpoint) >= PITCH_ANGLE_ERROR_MAX;
@@ -461,9 +459,8 @@ void initWebserver() {
       convertedSuccessfully = convertStringToDouble(value, temp);
 
       if (convertedSuccessfully) {
-        Kp = temp;
-        myPID.SetTunings(Kp, Ki, Kd);
-        jsonDoc["value"] = Kp;
+        pid.kp = temp;
+        jsonDoc["value"] = pid.kp;
       }
     }
     else if (key == "PID_Ki") {
@@ -471,9 +468,8 @@ void initWebserver() {
       convertedSuccessfully = convertStringToDouble(value, temp);
 
       if (convertedSuccessfully) {
-        Ki = temp;
-        myPID.SetTunings(Kp, Ki, Kd);
-        jsonDoc["value"] = Ki;
+        pid.ki = temp;
+        jsonDoc["value"] = pid.ki;
       }
     }
     else if (key == "PID_Kd") {
@@ -481,9 +477,8 @@ void initWebserver() {
       convertedSuccessfully = convertStringToDouble(value, temp);
 
       if (convertedSuccessfully) {
-        Kd = temp;
-        myPID.SetTunings(Kp, Ki, Kd);
-        jsonDoc["value"] = Kd;
+        pid.kd = temp;
+        jsonDoc["value"] = pid.kd;
       }
     }
     else if (key == "PID_setpoint") {
@@ -624,10 +619,11 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2A), handleMotor2EncoderA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2B), handleMotor2EncoderB, CHANGE);
 
-  myPID.SetMode(AUTOMATIC);
-  myPID.SetOutputLimits(-1., 1);  // -100% to 100% for motor power
-  myPID.SetSampleTime(4);   // ms
-
+  // PID constants
+  pid.kp = 6.5;
+  pid.ki = 0.0;
+  pid.kd = 0.0;
+  pid.inAuto = true;
 
   initWiFi();
   initWebserver();
