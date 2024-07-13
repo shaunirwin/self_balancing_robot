@@ -116,10 +116,17 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 QueueHandle_t queueIMURaw;  // queue of raw IMU measurements
 QueueHandle_t queueStateEstimates;  // queue of state estimates
 
+enum ControlMode { AUTO, MANUAL };    // choose whether control system controls the motors (AUTO) or user manually sets wheel movements (MANUAL)
+bool motor1DirManual {MOTOR_1_FORWARD}; // motor 1 direction when in manual mode
+bool motor2DirManual {MOTOR_2_FORWARD};
+uint dutyCycle1Manual {0};                // motor 1 duty cycle when in manual mode
+uint dutyCycle2Manual {0};
+
+ControlMode controlMode {AUTO};
 uint DUTY_CYCLE_MIN = 35;
 uint DUTY_CYCLE_MAX = 255;      // conservative for now. Can be as high as 255
 float PITCH_ANGLE_ERROR_MAX = 25.f*PI/180.f;   // maximum pitch angle error before motors cut off
-float PITCH_ANGLE_ERROR_MIN = 1.f*PI/180.f;   // minimumpitch angle error before motors cut off
+float PITCH_ANGLE_ERROR_MIN = 0.5f*PI/180.f;   // minimumpitch angle error before motors cut off
 
 // PID variables
 double pitch_angle_setpoint = -7.0*PI/180;  // desired pitch angle [rad]
@@ -230,47 +237,60 @@ void taskControlMotors(void * parameter) {
   ControlPacket_t controlPacket;
   
   for (;;) {
-        // Wait until data is available in the queue
-        if (xQueueReceive(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) == pdPASS) {
-            const float pitchAngleEst = stateEstimatePacket.pitch_est;
+    // Wait until data is available in the queue
+    if (xQueueReceive(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) == pdPASS) {
+      const float pitchAngleEst = stateEstimatePacket.pitch_est;
 
-            pitch_angle_current = static_cast<double>(pitchAngleEst);
+      pitch_angle_current = static_cast<double>(pitchAngleEst);
 
-            // Compute the PID output
-            pid.calculate(pitch_angle_setpoint, pitch_angle_current, stateEstimatePacket.pitch_velocity_gyro);
+      // Compute the PID output
+      pid.calculate(pitch_angle_setpoint, pitch_angle_current, stateEstimatePacket.pitch_velocity_gyro);
 
-            const double motorPerc = pid.Output;
-            const bool motorDir = motorPerc < 0;
+      const double motorPerc = pid.Output;
+      const bool motorDirAuto = motorPerc < 0;
 
-            const bool pitch_error_exceeded = abs(pitch_angle_current - pitch_angle_setpoint) >= PITCH_ANGLE_ERROR_MAX;
-            const bool pitch_error_small = abs(pitch_angle_current - pitch_angle_setpoint) <= PITCH_ANGLE_ERROR_MIN;
-            const bool motor_power_too_low = abs(motorPerc) < 0.05;
-            const bool disable_motors = pitch_error_exceeded || pitch_error_small || motor_power_too_low;
-            const uint dutyCycle = disable_motors ? 0 : static_cast<uint>(static_cast<double>(DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * abs(motorPerc) + static_cast<double>(DUTY_CYCLE_MIN));
+      const bool pitch_error_exceeded = abs(pitch_angle_current - pitch_angle_setpoint) >= PITCH_ANGLE_ERROR_MAX;
+      const bool pitch_error_small = abs(pitch_angle_current - pitch_angle_setpoint) <= PITCH_ANGLE_ERROR_MIN;
+      const bool motor_power_too_low = abs(motorPerc) < 0.05;
+      const bool disable_motors = pitch_error_exceeded || pitch_error_small || motor_power_too_low;
+      const uint dutyCycleAuto = disable_motors ? 0 : static_cast<uint>(static_cast<double>(DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * abs(motorPerc) + static_cast<double>(DUTY_CYCLE_MIN));
 
-            controlPacket.pitch_setpoint = static_cast<float>(pitch_angle_setpoint);
-            controlPacket.pitch_current = static_cast<float>(pitch_angle_current);
-            controlPacket.pitch_error = static_cast<float>(pitch_angle_current - pitch_angle_setpoint);
-            controlPacket.motorSpeed = static_cast<float>(motorPerc);
-            controlPacket.motorDir = static_cast<int>(motorDir);
-            controlPacket.dutyCycle = dutyCycle;
+      controlPacket.pitch_setpoint = static_cast<float>(pitch_angle_setpoint);
+      controlPacket.pitch_current = static_cast<float>(pitch_angle_current);
+      controlPacket.pitch_error = static_cast<float>(pitch_angle_current - pitch_angle_setpoint);
+      controlPacket.motorSpeed = static_cast<float>(motorPerc);
+      controlPacket.motorDir = static_cast<int>(motorDirAuto);
+      controlPacket.dutyCycle = dutyCycleAuto;
 
-            Serial.write(STX);
-            Serial.write( (uint8_t *) &controlPacket, sizeof( controlPacket ) );
-            Serial.write(ETX);
-            // invert direction to specific motors in case wires are switched
-            const bool motor1dir = motorDir;
-            const bool motor2dir = !motorDir;
+      Serial.write(STX);
+      Serial.write( (uint8_t *) &controlPacket, sizeof( controlPacket ) );
+      Serial.write(ETX);
 
-            // adjust the PWM to each motor independently to ensure speed is equal
-            const uint dutyCycle1 = dutyCycle; // + dutyCycleDiff;
-            const uint dutyCycle2 = dutyCycle; // - dutyCycleDiff;
+      // invert direction to specific motors in case wires are switched
+      const bool motor1DirAuto = motorDirAuto;
+      const bool motor2DirAuto = !motorDirAuto;
 
-            ledcWrite(MOTOR1_PWM_CHANNEL, dutyCycle1);
-            ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle2);
-            digitalWrite(PIN_MOTOR1_DIR, motor1dir);
-            digitalWrite(PIN_MOTOR2_DIR, motor2dir);
-        }
+      // adjust the PWM to each motor independently to ensure speed is equal
+      const uint dutyCycle1Auto = dutyCycleAuto; // + dutyCycleDiff;
+      const uint dutyCycle2Auto = dutyCycleAuto; // - dutyCycleDiff;
+
+      uint dutyCycle1 = dutyCycle1Manual;
+      uint dutyCycle2 = dutyCycle2Manual;
+      bool motor1dir = motor1DirManual;
+      bool motor2dir = motor2DirManual;
+
+      if (controlMode == ControlMode::AUTO) {
+        dutyCycle1 = dutyCycle1Auto;
+        dutyCycle2 = dutyCycle2Auto;
+        motor1dir = motor1DirAuto;
+        motor2dir = motor2DirAuto;
+      }
+
+      ledcWrite(MOTOR1_PWM_CHANNEL, dutyCycle1);
+      ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle2);
+      digitalWrite(PIN_MOTOR1_DIR, motor1dir);
+      digitalWrite(PIN_MOTOR2_DIR, motor2dir);
+    }
   }
 }
 
@@ -526,6 +546,65 @@ void initWebserver() {
         jsonDoc["value"] = PITCH_ANGLE_ERROR_MIN;
       }
     }
+    else if (key == "CONTROL_MODE") {
+      if (value == "AUTO") {
+        controlMode = ControlMode::AUTO;
+        convertedSuccessfully = true;
+        jsonDoc["value"] = controlMode;
+      }
+      else if (value == "MANUAL") {
+        motor1DirManual = MOTOR_1_FORWARD;
+        motor2DirManual = MOTOR_2_FORWARD;
+        dutyCycle1Manual = 0;
+        dutyCycle2Manual = 0;
+
+        controlMode = ControlMode::MANUAL;
+        convertedSuccessfully = true;
+        jsonDoc["value"] = controlMode;
+      }
+    }
+    else if (key == "MOTOR_1_DIR_MANUAL") {
+      if (value == "FORWARD") {
+        motor1DirManual = MOTOR_1_FORWARD;
+        convertedSuccessfully = true;
+        jsonDoc["value"] = motor1DirManual;
+      }
+      else if (value == "REVERSE") {
+        motor1DirManual = !MOTOR_1_FORWARD;
+        convertedSuccessfully = true;
+        jsonDoc["value"] = motor1DirManual;
+      }
+    }
+    else if (key == "MOTOR_2_DIR_MANUAL") {
+      if (value == "FORWARD") {
+        motor2DirManual = MOTOR_2_FORWARD;
+        convertedSuccessfully = true;
+        jsonDoc["value"] = motor2DirManual;
+      }
+      else if (value == "REVERSE") {
+        motor2DirManual = !MOTOR_2_FORWARD;
+        convertedSuccessfully = true;
+        jsonDoc["value"] = motor2DirManual;
+      }
+    }
+    else if (key == "MOTOR_1_DUTY_CYCLE_MANUAL") {
+      uint temp;
+      convertedSuccessfully = convertStringToUint(value, temp) && (temp >= 0) && (temp <= 255);
+
+      if (convertedSuccessfully) {
+        dutyCycle1Manual = temp;
+        jsonDoc["value"] = dutyCycle1Manual;
+      }
+    }
+    else if (key == "MOTOR_2_DUTY_CYCLE_MANUAL") {
+      uint temp;
+      convertedSuccessfully = convertStringToUint(value, temp) && (temp >= 0) && (temp <= 255);
+
+      if (convertedSuccessfully) {
+        dutyCycle2Manual = temp;
+        jsonDoc["value"] = dutyCycle2Manual;
+      }
+    }
     else {
       request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Key invalid\"}");
       return;   // is this needed?
@@ -620,7 +699,7 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2B), handleMotor2EncoderB, CHANGE);
 
   // PID constants
-  pid.kp = 6.5;
+  pid.kp = 3.0;
   pid.ki = 0.0;
   pid.kd = 0.0;
   pid.inAuto = true;
