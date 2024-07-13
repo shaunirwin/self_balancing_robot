@@ -105,12 +105,12 @@ QueueHandle_t queueIMURaw;  // queue of raw IMU measurements
 QueueHandle_t queueStateEstimates;  // queue of state estimates
 
 // PID constants
-double Kp = 5.0;
+double Kp = 6.5;
 double Ki = 0.0;
 double Kd = 0.0;
 
 // PID variables
-double pitch_angle_setpoint = -6.0*PI/180;  // desired pitch angle [rad]
+double pitch_angle_setpoint = -7.0*PI/180;  // desired pitch angle [rad]
 double pitch_angle_current = 0;        // current pitch angle [rad]
 double pid_output = 0;       // PID output (speed of motors)
 
@@ -218,7 +218,7 @@ void taskControlMotors(void * parameter) {
   ControlPacket_t controlPacket;
 
   const uint DUTY_CYCLE_MIN = 35;
-  const uint DUTY_CYCLE_MAX = 150;      // conservative for now. Can be as high as 255
+  const uint DUTY_CYCLE_MAX = 255;      // conservative for now. Can be as high as 255
   const float PITCH_ANGLE_ERROR_MAX = 28.f*PI/180.f;   // maximum pitch angle error before motors cut off
   const float PITCH_ANGLE_ERROR_MIN = 1.f*PI/180.f;   // minimumpitch angle error before motors cut off
   
