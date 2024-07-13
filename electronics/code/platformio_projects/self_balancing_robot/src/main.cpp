@@ -1,7 +1,12 @@
+#include <iostream>
+#include <string>
 #include <Arduino.h>
 
 #include "secrets.h"
 #include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <ArduinoJson.h>
+
 // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
 // for both classes must be in the include path of your project
 #include "I2Cdev.h"
@@ -15,6 +20,7 @@
 #endif
 
 MPU6050 imu;
+AsyncWebServer server(80);
 
 const int PIN_LED_PWM = 2;
 const int PIN_MOTOR1_SLEEP = 42;
@@ -358,7 +364,55 @@ void initWiFi() {
 
   ledStatus = true;
   ledcWrite(PIN_LED_PWM, ledStatus);
+}
 
+void initWebserver() {
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    // Create a JSON document
+    JsonDocument jsonDoc;
+    jsonDoc["message"] = "Hello, world!";
+    
+    // Serialize JSON document to a string
+    String jsonString;
+    serializeJson(jsonDoc, jsonString);
+    
+    // Send JSON response
+    request->send(200, "application/json", jsonString);
+  });
+
+  server.on("/set-pid-kp", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("value", true)) {
+      AsyncWebParameter* p = request->getParam("value", true);
+      String value = p->value();
+      char* end;
+      double tempDouble = strtod(value.c_str(), &end);
+
+      // Check if the conversion was successful
+      if (*end == '\0') {
+        Kp = tempDouble;
+
+        // Create a JSON document for the response
+        JsonDocument jsonDoc;
+        jsonDoc["status"] = "success";
+        jsonDoc["message"] = "Kp variable updated";
+        jsonDoc["value"] = Kp;
+
+        // Serialize JSON document to a string
+        String jsonString;
+        serializeJson(jsonDoc, jsonString);
+
+        // Send JSON response
+        request->send(200, "application/json", jsonString);
+      } else {
+        request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid float value\"}");
+      }
+    } else {
+      request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing value parameter\"}");
+    }
+  });
+
+  // Start the server
+  server.begin();
 }
  
 void setup(){
@@ -437,6 +491,7 @@ void setup(){
 
 
   initWiFi();
+  initWebserver();
 }
  
 // void loop(){
