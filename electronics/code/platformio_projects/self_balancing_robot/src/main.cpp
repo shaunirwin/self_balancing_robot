@@ -220,6 +220,7 @@ void taskControlMotors(void * parameter) {
   const uint DUTY_CYCLE_MIN = 35;
   const uint DUTY_CYCLE_MAX = 150;      // conservative for now. Can be as high as 255
   const float PITCH_ANGLE_ERROR_MAX = 28.f*PI/180.f;   // maximum pitch angle error before motors cut off
+  const float PITCH_ANGLE_ERROR_MIN = 1.f*PI/180.f;   // minimumpitch angle error before motors cut off
   
   for (;;) {
         // Wait until data is available in the queue
@@ -231,12 +232,13 @@ void taskControlMotors(void * parameter) {
             // Compute the PID output
             myPID.Compute();
 
-            double motorPerc = pid_output;
+            const double motorPerc = pid_output;
             const bool motorDir = motorPerc < 0;
 
             const bool pitch_error_exceeded = abs(pitch_angle_current - pitch_angle_setpoint) >= PITCH_ANGLE_ERROR_MAX;
+            const bool pitch_error_small = abs(pitch_angle_current - pitch_angle_setpoint) <= PITCH_ANGLE_ERROR_MIN;
             const bool motor_power_too_low = abs(motorPerc) < 0.05;
-            const bool disable_motors = pitch_error_exceeded || motor_power_too_low;
+            const bool disable_motors = pitch_error_exceeded || pitch_error_small || motor_power_too_low;
             const uint dutyCycle = disable_motors ? 0 : static_cast<uint>(static_cast<double>(DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * abs(motorPerc) + static_cast<double>(DUTY_CYCLE_MIN));
 
             controlPacket.pitch_setpoint = static_cast<float>(pitch_angle_setpoint);
