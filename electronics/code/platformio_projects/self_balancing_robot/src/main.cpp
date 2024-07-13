@@ -462,6 +462,7 @@ void initWebserver() {
 
       if (convertedSuccessfully) {
         Kp = temp;
+        myPID.SetTunings(Kp, Ki, Kd);
         jsonDoc["value"] = Kp;
       }
     }
@@ -471,6 +472,7 @@ void initWebserver() {
 
       if (convertedSuccessfully) {
         Ki = temp;
+        myPID.SetTunings(Kp, Ki, Kd);
         jsonDoc["value"] = Ki;
       }
     }
@@ -480,6 +482,7 @@ void initWebserver() {
 
       if (convertedSuccessfully) {
         Kd = temp;
+        myPID.SetTunings(Kp, Ki, Kd);
         jsonDoc["value"] = Kd;
       }
     }
