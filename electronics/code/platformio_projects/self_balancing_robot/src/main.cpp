@@ -617,31 +617,31 @@ void initWebserver() {
 
         controlMode = ControlMode::MANUAL;
         convertedSuccessfully = true;
-        jsonDoc["value"] = controlMode;
+        jsonDoc["value"] = controlModeToStr(controlMode);
       }
     }
     else if (key == "MOTOR_1_DIR_MANUAL") {
       if (value == "FORWARD") {
         motor1DirManual = MotorDirection::FORWARD;
         convertedSuccessfully = true;
-        jsonDoc["value"] = motor1DirManual;
+        jsonDoc["value"] = motorDirToStr(motor1DirManual);
       }
       else if (value == "REVERSE") {
         motor1DirManual = MotorDirection::REVERSE;
         convertedSuccessfully = true;
-        jsonDoc["value"] = motor1DirManual;
+        jsonDoc["value"] = motorDirToStr(motor1DirManual);
       }
     }
     else if (key == "MOTOR_2_DIR_MANUAL") {
       if (value == "FORWARD") {
         motor2DirManual = MotorDirection::FORWARD;
         convertedSuccessfully = true;
-        jsonDoc["value"] = motor2DirManual;
+        jsonDoc["value"] = motorDirToStr(motor2DirManual);
       }
       else if (value == "REVERSE") {
         motor2DirManual = MotorDirection::REVERSE;
         convertedSuccessfully = true;
-        jsonDoc["value"] = motor2DirManual;
+        jsonDoc["value"] = motorDirToStr(motor2DirManual);
       }
     }
     else if (key == "MOTOR_1_DUTY_CYCLE_MANUAL") {

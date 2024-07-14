@@ -9,12 +9,12 @@ def deg_to_rad(deg: float):
 def rad_to_deg(rad: float):
     return rad * 180. / pi
 
+def writeEntry(entry, text):
+    entry.delete(0, tk.END)
+    entry.insert(0, text)
 
 class App:
     def __init__(self, root):
-        # get initial status of all variables from robot
-        status_info = self.get_request()
-
         self.root = root
         self.root.title("REST API Client")
 
@@ -127,23 +127,11 @@ class App:
         self.button13 = tk.Button(root, text="STOP", command=self.send_stop)
         self.button13.grid(row=4, column=9)
 
-        self.button14 = tk.Button(root, text="REFRESH STATUSES", command=self.get_request)
+        self.button14 = tk.Button(root, text="REFRESH STATUSES", command=self.refresh_statuses)
         self.button14.grid(row=0, column=9)
 
-        # set initial values for each field
-        self.entry_kp.insert(0, status_info['PID_Kp'])
-        self.entry_ki.insert(0, status_info['PID_Ki'])
-        self.entry_kd.insert(0, status_info['PID_Kd'])
-        self.entry_setpoint.insert(0, rad_to_deg(status_info['PID_setpoint']))
-        self.entry_duty_cycle_min.insert(0, status_info['MOTOR_DUTY_CYCLE_MIN'])
-        self.entry_duty_cycle_max.insert(0, status_info['MOTOR_DUTY_CYCLE_MAX'])
-        self.entry_pitch_error_max.insert(0, rad_to_deg(status_info['PITCH_ANGLE_ERROR_MAX']))
-        self.entry_pitch_error_min.insert(0, rad_to_deg(status_info['PITCH_ANGLE_ERROR_MIN']))
-        self.entry_motor_1_duty_cycle_manual.insert(0, status_info['MOTOR_1_DUTY_CYCLE_MANUAL'])
-        self.entry_motor_2_duty_cycle_manual.insert(0, status_info['MOTOR_2_DUTY_CYCLE_MANUAL'])
-        self.drive_mode.set(status_info['CONTROL_MODE'])
-        self.motor_1_dir_manual.set(status_info['MOTOR_1_DIR_MANUAL'])
-        self.motor_2_dir_manual.set(status_info['MOTOR_2_DIR_MANUAL'])
+        # get initial status of all variables from robot
+        status_info = self.refresh_statuses()
 
     def send_Kp(self):
         self.post_request({'key': 'PID_Kp', 'value': self.entry_kp.get()})
@@ -182,6 +170,7 @@ class App:
         self.post_request({'key': 'MOTOR_2_DUTY_CYCLE_MANUAL', 'value': self.entry_motor_2_duty_cycle_manual.get()})
     
     def on_drive_mode_toggled(self):
+        print('drive mode:', self.drive_mode.get())
         self.post_request({'key': 'CONTROL_MODE', 'value': self.drive_mode.get()})
     
     def on_motor_1_dir_toggled(self):
@@ -192,6 +181,7 @@ class App:
     
     def send_stop(self):
         self.post_request({'key': 'EMERGENCY_STOP', 'value': ""})
+        self.refresh_statuses()
 
     def post_request(self, data):
         url = 'http://192.168.178.55/set-value'
@@ -207,8 +197,8 @@ class App:
         except requests.exceptions.RequestException as e:
             print(f"Request failed: {e}")
     
-    def get_request(self):
-        url = 'http://192.168.178.55/status'
+    def get_request(self, url_suffix='status'):
+        url = f'http://192.168.178.55/{url_suffix}'
         
         print('Sending get request for url:', url)
         
@@ -222,6 +212,25 @@ class App:
             print(f"Request failed: {e}")
         
         return response.json()
+    
+    def refresh_statuses(self):
+        status_info = self.get_request(url_suffix='status')
+
+        # set initial values for each field
+        writeEntry(self.entry_kp, status_info['PID_Kp'])
+        writeEntry(self.entry_ki, status_info['PID_Ki'])
+        writeEntry(self.entry_kd, status_info['PID_Kd'])
+        writeEntry(self.entry_setpoint, rad_to_deg(status_info['PID_setpoint']))
+        writeEntry(self.entry_duty_cycle_min, status_info['MOTOR_DUTY_CYCLE_MIN'])
+        writeEntry(self.entry_duty_cycle_max, status_info['MOTOR_DUTY_CYCLE_MAX'])
+        writeEntry(self.entry_pitch_error_max, rad_to_deg(status_info['PITCH_ANGLE_ERROR_MAX']))
+        writeEntry(self.entry_pitch_error_min, rad_to_deg(status_info['PITCH_ANGLE_ERROR_MIN']))
+        writeEntry(self.entry_motor_1_duty_cycle_manual, status_info['MOTOR_1_DUTY_CYCLE_MANUAL'])
+        writeEntry(self.entry_motor_2_duty_cycle_manual, status_info['MOTOR_2_DUTY_CYCLE_MANUAL'])
+        self.drive_mode.set(status_info['CONTROL_MODE'])
+        self.motor_1_dir_manual.set(status_info['MOTOR_1_DIR_MANUAL'])
+        self.motor_2_dir_manual.set(status_info['MOTOR_2_DIR_MANUAL'])
+
 
 if __name__ == "__main__":
     root = tk.Tk()
