@@ -3,6 +3,9 @@ import requests
 
 class App:
     def __init__(self, root):
+        # get initial status of all variables from robot
+        status_info = self.get_request()
+
         self.root = root
         self.root.title("REST API Client")
 
@@ -68,12 +71,12 @@ class App:
         self.entry_motor_2_duty_cycle_manual.grid(row=3, column=7)
 
         self.drive_mode = tk.StringVar()
-        self.field13_label = tk.Label(root, text="Drive Mode")
-        self.field13_label.grid(row=4, column=4)
-        self.field13_rb_auto = tk.Radiobutton(root, text='Auto', variable=self.drive_mode, value='AUTO', command=self.on_drive_mode_toggled)
-        self.field13_rb_auto.grid(row=4, column=5)
-        self.field13_rb_manual = tk.Radiobutton(root, text='Manual', variable=self.drive_mode, value='MANUAL', command=self.on_drive_mode_toggled)
-        self.field13_rb_manual.grid(row=4, column=6)
+        self.label_drive_mode = tk.Label(root, text="Drive Mode")
+        self.label_drive_mode.grid(row=4, column=4)
+        self.rb_auto = tk.Radiobutton(root, text='Auto', variable=self.drive_mode, value='AUTO', command=self.on_drive_mode_toggled)
+        self.rb_auto.grid(row=4, column=5)
+        self.rb_manual = tk.Radiobutton(root, text='Manual', variable=self.drive_mode, value='MANUAL', command=self.on_drive_mode_toggled)
+        self.rb_manual.grid(row=4, column=6)
 
         # buttons
         self.button1 = tk.Button(root, text="Submit Kp", command=self.send_Kp)
@@ -112,6 +115,21 @@ class App:
 
         self.button12 = tk.Button(root, text="Submit motor 2 duty cycle manual", command=self.send_motor2_duty_cycle_manual)
         self.button12.grid(row=3, column=8)
+
+        # set initial values for each field
+        self.entry_kp.insert(0, status_info['PID_Kp'])
+        self.entry_ki.insert(0, status_info['PID_Ki'])
+        self.entry_kd.insert(0, status_info['PID_Kd'])
+        self.entry_setpoint.insert(0, status_info['PID_setpoint'])
+        self.entry_duty_cycle_min.insert(0, status_info['MOTOR_DUTY_CYCLE_MIN'])
+        self.entry_duty_cycle_max.insert(0, status_info['MOTOR_DUTY_CYCLE_MAX'])
+        self.entry_pitch_error_max.insert(0, status_info['PITCH_ANGLE_ERROR_MAX'])
+        self.entry_pitch_error_min.insert(0, status_info['PITCH_ANGLE_ERROR_MIN'])
+        self.entry_motor_1_dir_manual.insert(0, status_info['MOTOR_1_DIR_MANUAL'])
+        self.entry_motor_2_dir_manual.insert(0, status_info['MOTOR_2_DIR_MANUAL'])
+        self.entry_motor_1_duty_cycle_manual.insert(0, status_info['MOTOR_1_DUTY_CYCLE_MANUAL'])
+        self.entry_motor_2_duty_cycle_manual.insert(0, status_info['MOTOR_2_DUTY_CYCLE_MANUAL'])
+        self.drive_mode.set(status_info['CONTROL_MODE'])
 
     def send_Kp(self):
         self.post_request({'key': 'PID_Kp', 'value': self.entry_kp.get()})
@@ -152,23 +170,35 @@ class App:
     def on_drive_mode_toggled(self):
         self.post_request({'key': 'CONTROL_MODE', 'value': self.drive_mode.get()})
 
-    def send_request(self, data):
-        url = 'http://192.168.178.55/set-value'  # Replace with your actual server URL and endpoint
+    def post_request(self, data):
+        url = 'http://192.168.178.55/set-value'
         
         print('Sending request with body:', data)
         
         try:
-            # response = requests.post(url, json=data, headers=headers)
             response = requests.post(url, data=data)
             if response.status_code == 200:
                 print(f"Request successful: {response.text}")
-                # Optionally, show a message or handle success
             else:
                 print(f"Request failed with status code: {response.status_code}: {response.text}")
-                # Optionally, show an error message or handle failure
         except requests.exceptions.RequestException as e:
             print(f"Request failed: {e}")
-            # Handle exceptions, e.g., connection errors
+    
+    def get_request(self):
+        url = 'http://192.168.178.55/status'
+        
+        print('Sending get request for url:', url)
+        
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                print(f"Request successful: {response.text}")
+            else:
+                print(f"Request failed with status code: {response.status_code}: {response.text}")
+        except requests.exceptions.RequestException as e:
+            print(f"Request failed: {e}")
+        
+        return response.json()
 
 if __name__ == "__main__":
     root = tk.Tk()
