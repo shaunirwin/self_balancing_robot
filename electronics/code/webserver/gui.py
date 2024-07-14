@@ -67,6 +67,14 @@ class App:
         self.field12_entry = tk.Entry(root)
         self.field12_entry.grid(row=3, column=7)
 
+        self.drive_mode = tk.StringVar()
+        self.field13_label = tk.Label(root, text="Drive Mode")
+        self.field13_label.grid(row=4, column=4)
+        self.field13_rb_auto = tk.Radiobutton(root, text='Auto', variable=self.drive_mode, value='AUTO', command=self.on_drive_mode_toggled)
+        self.field13_rb_auto.grid(row=4, column=5)
+        self.field13_rb_manual = tk.Radiobutton(root, text='Manual', variable=self.drive_mode, value='MANUAL', command=self.on_drive_mode_toggled)
+        self.field13_rb_manual.grid(row=4, column=6)
+
         # buttons
         self.button1 = tk.Button(root, text="Submit Kp", command=self.send_Kp)
         self.button1.grid(row=0, column=2)
@@ -140,6 +148,9 @@ class App:
     
     def send_motor2_duty_cycle_manual(self):
         self.send_request({'key': 'MOTOR_2_DUTY_CYCLE_MANUAL', 'value': self.field12_entry.get()})
+    
+    def on_drive_mode_toggled(self):
+        self.send_request({'key': 'CONTROL_MODE', 'value': self.drive_mode.get()})
 
     def send_request(self, data):
         url = 'http://192.168.178.55/set-value'  # Replace with your actual server URL and endpoint
