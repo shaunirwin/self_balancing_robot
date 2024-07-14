@@ -59,15 +59,21 @@ class App:
         self.entry_pitch_error_min = tk.Entry(root)
         self.entry_pitch_error_min.grid(row=3, column=4)
 
+        self.motor_1_dir_manual = tk.StringVar()
         self.label_motor_1_dir_manual = tk.Label(root, text="MOTOR_1_DIR_MANUAL")
         self.label_motor_1_dir_manual.grid(row=0, column=6)
-        self.entry_motor_1_dir_manual = tk.Entry(root)
-        self.entry_motor_1_dir_manual.grid(row=0, column=7)
+        self.rb_motor_1_forward = tk.Radiobutton(root, text='Forward', variable=self.motor_1_dir_manual, value='FORWARD', command=self.on_motor_1_dir_toggled)
+        self.rb_motor_1_forward.grid(row=0, column=7)
+        self.rb_motor_1_reverse = tk.Radiobutton(root, text='Reverse', variable=self.motor_1_dir_manual, value='REVERSE', command=self.on_motor_1_dir_toggled)
+        self.rb_motor_1_reverse.grid(row=0, column=8)
 
+        self.motor_2_dir_manual = tk.StringVar()
         self.label_motor_2_dir_manual = tk.Label(root, text="MOTOR_2_DIR_MANUAL")
         self.label_motor_2_dir_manual.grid(row=1, column=6)
-        self.entry_motor_2_dir_manual = tk.Entry(root)
-        self.entry_motor_2_dir_manual.grid(row=1, column=7)
+        self.rb_motor_2_forward = tk.Radiobutton(root, text='Forward', variable=self.motor_2_dir_manual, value='FORWARD', command=self.on_motor_2_dir_toggled)
+        self.rb_motor_2_forward.grid(row=1, column=7)
+        self.rb_motor_2_reverse = tk.Radiobutton(root, text='Reverse', variable=self.motor_2_dir_manual, value='REVERSE', command=self.on_motor_2_dir_toggled)
+        self.rb_motor_2_reverse.grid(row=1, column=8)
 
         self.label_motor_1_duty_cycle_manual = tk.Label(root, text="MOTOR_1_DUTY_CYCLE_MANUAL")
         self.label_motor_1_duty_cycle_manual.grid(row=2, column=6)
@@ -112,13 +118,6 @@ class App:
         self.button8 = tk.Button(root, text="Submit pitch angle err min", command=self.send_pitch_err_min)
         self.button8.grid(row=3, column=5)
 
-
-        self.button9 = tk.Button(root, text="Submit motor 1 dir manual", command=self.send_motor1_dir_manual)
-        self.button9.grid(row=0, column=8)
-
-        self.button10 = tk.Button(root, text="Submit motor 2 dir manual", command=self.send_motor2_dir_manual)
-        self.button10.grid(row=1, column=8)
-
         self.button11 = tk.Button(root, text="Submit motor 1 duty cycle manual", command=self.send_motor1_duty_cycle_manual)
         self.button11.grid(row=2, column=8)
 
@@ -134,11 +133,11 @@ class App:
         self.entry_duty_cycle_max.insert(0, status_info['MOTOR_DUTY_CYCLE_MAX'])
         self.entry_pitch_error_max.insert(0, rad_to_deg(status_info['PITCH_ANGLE_ERROR_MAX']))
         self.entry_pitch_error_min.insert(0, rad_to_deg(status_info['PITCH_ANGLE_ERROR_MIN']))
-        self.entry_motor_1_dir_manual.insert(0, status_info['MOTOR_1_DIR_MANUAL'])
-        self.entry_motor_2_dir_manual.insert(0, status_info['MOTOR_2_DIR_MANUAL'])
         self.entry_motor_1_duty_cycle_manual.insert(0, status_info['MOTOR_1_DUTY_CYCLE_MANUAL'])
         self.entry_motor_2_duty_cycle_manual.insert(0, status_info['MOTOR_2_DUTY_CYCLE_MANUAL'])
         self.drive_mode.set(status_info['CONTROL_MODE'])
+        self.motor_1_dir_manual.set(status_info['MOTOR_1_DIR_MANUAL'])
+        self.motor_2_dir_manual.set(status_info['MOTOR_2_DIR_MANUAL'])
 
     def send_Kp(self):
         self.post_request({'key': 'PID_Kp', 'value': self.entry_kp.get()})
@@ -178,6 +177,12 @@ class App:
     
     def on_drive_mode_toggled(self):
         self.post_request({'key': 'CONTROL_MODE', 'value': self.drive_mode.get()})
+    
+    def on_motor_1_dir_toggled(self):
+        self.post_request({'key': 'MOTOR_1_DIR_MANUAL', 'value': self.motor_1_dir_manual.get()})
+    
+    def on_motor_2_dir_toggled(self):
+        self.post_request({'key': 'MOTOR_2_DIR_MANUAL', 'value': self.motor_2_dir_manual.get()})
 
     def post_request(self, data):
         url = 'http://192.168.178.55/set-value'
