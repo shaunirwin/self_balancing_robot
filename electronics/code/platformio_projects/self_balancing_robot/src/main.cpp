@@ -445,6 +445,29 @@ void initWebserver() {
     request->send(200, "application/json", jsonString);
   });
 
+  server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
+    JsonDocument jsonDoc;
+    jsonDoc["PID_Kp"] = pid.kp;
+    jsonDoc["PID_Ki"] = pid.ki;
+    jsonDoc["PID_Kd"] = pid.kd;
+    jsonDoc["PID_setpoint"] = pitch_angle_setpoint;
+    jsonDoc["MOTOR_DUTY_CYCLE_MIN"] = DUTY_CYCLE_MIN;
+    jsonDoc["MOTOR_DUTY_CYCLE_MAX"] = DUTY_CYCLE_MAX;
+    jsonDoc["PITCH_ANGLE_ERROR_MAX"] = PITCH_ANGLE_ERROR_MAX;
+    jsonDoc["PITCH_ANGLE_ERROR_MIN"] = PITCH_ANGLE_ERROR_MIN;
+    jsonDoc["CONTROL_MODE"] = controlMode;
+    jsonDoc["MOTOR_1_DIR_MANUAL"] = motor1DirManual;
+    jsonDoc["MOTOR_2_DIR_MANUAL"] = motor2DirManual;
+    jsonDoc["MOTOR_1_DUTY_CYCLE_MANUAL"] = dutyCycle1Manual;
+    jsonDoc["MOTOR_2_DUTY_CYCLE_MANUAL"] = dutyCycle2Manual;
+
+    String jsonString;
+    serializeJson(jsonDoc, jsonString);
+
+    // Send JSON response
+    request->send(200, "application/json", jsonString);
+  });
+
   server.on("/set-value", HTTP_POST, [](AsyncWebServerRequest *request) {
     // std::set<String> keys {"PID_Kp", "PID_Ki", "PID_Kd"}; //, "MOTOR_DUTY_CYCLE_MIN", "MOTOR_DUTY_CYCLE_MAX"};
     String key {""};
