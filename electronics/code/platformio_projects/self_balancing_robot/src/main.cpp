@@ -456,6 +456,15 @@ MotorDirection strToMotorDir(String str) {
   return str == "FORWARD" ? MotorDirection::FORWARD : MotorDirection::REVERSE;
 }
 
+void stopMotors() {
+  motor1DirManual = MotorDirection::FORWARD;
+  motor2DirManual = MotorDirection::FORWARD;
+  dutyCycle1Manual = 0;
+  dutyCycle2Manual = 0;
+
+  controlMode = ControlMode::MANUAL;
+}
+
 void initWebserver() {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     // Create a JSON document
@@ -652,6 +661,11 @@ void initWebserver() {
         dutyCycle2Manual = temp;
         jsonDoc["value"] = dutyCycle2Manual;
       }
+    }
+    else if (key == "EMERGENCY_STOP") {
+      stopMotors();
+      convertedSuccessfully = true;
+      jsonDoc["value"] = "";
     }
     else {
       request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Key invalid\"}");

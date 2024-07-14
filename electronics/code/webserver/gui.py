@@ -124,6 +124,12 @@ class App:
         self.button12 = tk.Button(root, text="Submit motor 2 duty cycle manual", command=self.send_motor2_duty_cycle_manual)
         self.button12.grid(row=3, column=8)
 
+        self.button13 = tk.Button(root, text="STOP", command=self.send_stop)
+        self.button13.grid(row=4, column=9)
+
+        self.button14 = tk.Button(root, text="REFRESH STATUSES", command=self.get_request)
+        self.button14.grid(row=0, column=9)
+
         # set initial values for each field
         self.entry_kp.insert(0, status_info['PID_Kp'])
         self.entry_ki.insert(0, status_info['PID_Ki'])
@@ -183,6 +189,9 @@ class App:
     
     def on_motor_2_dir_toggled(self):
         self.post_request({'key': 'MOTOR_2_DIR_MANUAL', 'value': self.motor_2_dir_manual.get()})
+    
+    def send_stop(self):
+        self.post_request({'key': 'EMERGENCY_STOP', 'value': ""})
 
     def post_request(self, data):
         url = 'http://192.168.178.55/set-value'
