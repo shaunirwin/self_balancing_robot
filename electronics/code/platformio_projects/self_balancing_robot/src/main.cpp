@@ -42,12 +42,11 @@ const int MOTOR1_PWM_CHANNEL = 0;   // set the PWM channel
 const int MOTOR2_PWM_CHANNEL = 1;   // set the PWM channel
 const int PWM_RESOLUTION = 8;       // set PWM resolution
 
-const bool MOTOR_1_FORWARD = true;
-const bool MOTOR_2_FORWARD = false;
+const bool MOTOR_1_DIR_INVERT = false;
+const bool MOTOR_2_DIR_INVERT = true;
 const bool MOTOR_COAST = false;
 const uint ENCODER_PULSES_PER_REVOLUTION = 464;
 
-bool dirDrive = MOTOR_1_FORWARD;
 bool ledStatus = true;
 
 // serial tx control characters
@@ -116,12 +115,14 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 QueueHandle_t queueIMURaw;  // queue of raw IMU measurements
 QueueHandle_t queueStateEstimates;  // queue of state estimates
 
-enum ControlMode { AUTO, MANUAL };    // choose whether control system controls the motors (AUTO) or user manually sets wheel movements (MANUAL)
-bool motor1DirManual {MOTOR_1_FORWARD}; // motor 1 direction when in manual mode
-bool motor2DirManual {MOTOR_2_FORWARD};
+enum MotorDirection { FORWARD, REVERSE }; 
+MotorDirection dirDrive { MotorDirection::FORWARD };
+MotorDirection motor1DirManual { MotorDirection::FORWARD }; // motor 1 direction when in manual mode
+MotorDirection motor2DirManual { MotorDirection::FORWARD };
 uint dutyCycle1Manual {0};                // motor 1 duty cycle when in manual mode
 uint dutyCycle2Manual {0};
 
+enum ControlMode { AUTO, MANUAL };    // choose whether control system controls the motors (AUTO) or user manually sets wheel movements (MANUAL)
 ControlMode controlMode {AUTO};
 uint DUTY_CYCLE_MIN = 35;
 uint DUTY_CYCLE_MAX = 255;      // conservative for now. Can be as high as 255
@@ -247,7 +248,7 @@ void taskControlMotors(void * parameter) {
       pid.calculate(pitch_angle_setpoint, pitch_angle_current, stateEstimatePacket.pitch_velocity_gyro);
 
       const double motorPerc = pid.Output;
-      const bool motorDirAuto = motorPerc < 0;
+      const MotorDirection motorDirAuto = motorPerc < 0 ? MotorDirection::FORWARD : MotorDirection::REVERSE;
 
       const bool pitch_error_exceeded = abs(pitch_angle_current - pitch_angle_setpoint) >= PITCH_ANGLE_ERROR_MAX;
       const bool pitch_error_small = abs(pitch_angle_current - pitch_angle_setpoint) <= PITCH_ANGLE_ERROR_MIN;
@@ -266,30 +267,36 @@ void taskControlMotors(void * parameter) {
       Serial.write( (uint8_t *) &controlPacket, sizeof( controlPacket ) );
       Serial.write(ETX);
 
-      // invert direction to specific motors in case wires are switched
-      const bool motor1DirAuto = motorDirAuto;
-      const bool motor2DirAuto = !motorDirAuto;
-
       // adjust the PWM to each motor independently to ensure speed is equal
       const uint dutyCycle1Auto = dutyCycleAuto; // + dutyCycleDiff;
       const uint dutyCycle2Auto = dutyCycleAuto; // - dutyCycleDiff;
 
       uint dutyCycle1 = dutyCycle1Manual;
       uint dutyCycle2 = dutyCycle2Manual;
-      bool motor1dir = motor1DirManual;
-      bool motor2dir = motor2DirManual;
+      MotorDirection motor1dir = motor1DirManual;
+      MotorDirection motor2dir = motor2DirManual;
 
       if (controlMode == ControlMode::AUTO) {
         dutyCycle1 = dutyCycle1Auto;
         dutyCycle2 = dutyCycle2Auto;
-        motor1dir = motor1DirAuto;
-        motor2dir = motor2DirAuto;
+        motor1dir = motorDirAuto;
+        motor2dir = motorDirAuto;
+      }
+
+      // invert direction to specific motors in case wires are switched
+      bool motor1dirActual = motor1dir == MotorDirection::FORWARD;
+      bool motor2dirActual = motor2dir == MotorDirection::FORWARD;
+      if (MOTOR_1_DIR_INVERT) {
+        motor1dirActual = !motor1dirActual;
+      }
+      if (MOTOR_2_DIR_INVERT) {
+        motor2dirActual = !motor2dirActual;
       }
 
       ledcWrite(MOTOR1_PWM_CHANNEL, dutyCycle1);
       ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle2);
-      digitalWrite(PIN_MOTOR1_DIR, motor1dir);
-      digitalWrite(PIN_MOTOR2_DIR, motor2dir);
+      digitalWrite(PIN_MOTOR1_DIR, motor1dirActual);
+      digitalWrite(PIN_MOTOR2_DIR, motor2dirActual);
     }
   }
 }
@@ -431,6 +438,24 @@ bool convertStringToUint(const String &value, uint &result) {
   return true;
 }
 
+// serialisation of boolean variables
+
+String controlModeToStr(const ControlMode controlMode) {
+  return controlMode == ControlMode::AUTO ? "AUTO" : "MANUAL";
+}
+
+ControlMode strToControlMode(String str) {
+  return str == "AUTO" ? ControlMode::AUTO : ControlMode::MANUAL;
+}
+
+String motorDirToStr(const MotorDirection motorDir) {
+  return motorDir == MotorDirection::FORWARD ? "FORWARD" : "REVERSE";
+}
+
+MotorDirection strToMotorDir(String str) {
+  return str == "FORWARD" ? MotorDirection::FORWARD : MotorDirection::REVERSE;
+}
+
 void initWebserver() {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     // Create a JSON document
@@ -455,9 +480,9 @@ void initWebserver() {
     jsonDoc["MOTOR_DUTY_CYCLE_MAX"] = DUTY_CYCLE_MAX;
     jsonDoc["PITCH_ANGLE_ERROR_MAX"] = PITCH_ANGLE_ERROR_MAX;
     jsonDoc["PITCH_ANGLE_ERROR_MIN"] = PITCH_ANGLE_ERROR_MIN;
-    jsonDoc["CONTROL_MODE"] = controlMode;
-    jsonDoc["MOTOR_1_DIR_MANUAL"] = motor1DirManual;
-    jsonDoc["MOTOR_2_DIR_MANUAL"] = motor2DirManual;
+    jsonDoc["CONTROL_MODE"] = controlModeToStr(controlMode);
+    jsonDoc["MOTOR_1_DIR_MANUAL"] = motorDirToStr(motor1DirManual);
+    jsonDoc["MOTOR_2_DIR_MANUAL"] = motorDirToStr(motor2DirManual);
     jsonDoc["MOTOR_1_DUTY_CYCLE_MANUAL"] = dutyCycle1Manual;
     jsonDoc["MOTOR_2_DUTY_CYCLE_MANUAL"] = dutyCycle2Manual;
 
@@ -576,8 +601,8 @@ void initWebserver() {
         jsonDoc["value"] = controlMode;
       }
       else if (value == "MANUAL") {
-        motor1DirManual = MOTOR_1_FORWARD;
-        motor2DirManual = MOTOR_2_FORWARD;
+        motor1DirManual = MotorDirection::FORWARD;
+        motor2DirManual = MotorDirection::FORWARD;
         dutyCycle1Manual = 0;
         dutyCycle2Manual = 0;
 
@@ -588,24 +613,24 @@ void initWebserver() {
     }
     else if (key == "MOTOR_1_DIR_MANUAL") {
       if (value == "FORWARD") {
-        motor1DirManual = MOTOR_1_FORWARD;
+        motor1DirManual = MotorDirection::FORWARD;
         convertedSuccessfully = true;
         jsonDoc["value"] = motor1DirManual;
       }
       else if (value == "REVERSE") {
-        motor1DirManual = !MOTOR_1_FORWARD;
+        motor1DirManual = MotorDirection::REVERSE;
         convertedSuccessfully = true;
         jsonDoc["value"] = motor1DirManual;
       }
     }
     else if (key == "MOTOR_2_DIR_MANUAL") {
       if (value == "FORWARD") {
-        motor2DirManual = MOTOR_2_FORWARD;
+        motor2DirManual = MotorDirection::FORWARD;
         convertedSuccessfully = true;
         jsonDoc["value"] = motor2DirManual;
       }
       else if (value == "REVERSE") {
-        motor2DirManual = !MOTOR_2_FORWARD;
+        motor2DirManual = MotorDirection::REVERSE;
         convertedSuccessfully = true;
         jsonDoc["value"] = motor2DirManual;
       }
