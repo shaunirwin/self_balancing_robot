@@ -1,5 +1,14 @@
 import tkinter as tk
 import requests
+from math import pi
+
+
+def deg_to_rad(deg: float):
+    return deg * pi / 180.
+
+def rad_to_deg(rad: float):
+    return rad * 180. / pi
+
 
 class App:
     def __init__(self, root):
@@ -25,7 +34,7 @@ class App:
         self.entry_kd = tk.Entry(root)
         self.entry_kd.grid(row=2, column=1)
 
-        self.label_setpoint = tk.Label(root, text="Setpoint")
+        self.label_setpoint = tk.Label(root, text="Pitch setpoint [deg]")
         self.label_setpoint.grid(row=3, column=0)
         self.entry_setpoint = tk.Entry(root)
         self.entry_setpoint.grid(row=3, column=1)
@@ -40,12 +49,12 @@ class App:
         self.entry_duty_cycle_max = tk.Entry(root)
         self.entry_duty_cycle_max.grid(row=1, column=4)
 
-        self.label_pitch_error_max = tk.Label(root, text="PITCH_ANGLE_ERROR_MAX")
+        self.label_pitch_error_max = tk.Label(root, text="PITCH_ANGLE_ERROR_MAX [deg]")
         self.label_pitch_error_max.grid(row=2, column=3)
         self.entry_pitch_error_max = tk.Entry(root)
         self.entry_pitch_error_max.grid(row=2, column=4)
 
-        self.label_pitch_error_min = tk.Label(root, text="PITCH_ANGLE_ERROR_MIN")
+        self.label_pitch_error_min = tk.Label(root, text="PITCH_ANGLE_ERROR_MIN [deg]")
         self.label_pitch_error_min.grid(row=3, column=3)
         self.entry_pitch_error_min = tk.Entry(root)
         self.entry_pitch_error_min.grid(row=3, column=4)
@@ -120,11 +129,11 @@ class App:
         self.entry_kp.insert(0, status_info['PID_Kp'])
         self.entry_ki.insert(0, status_info['PID_Ki'])
         self.entry_kd.insert(0, status_info['PID_Kd'])
-        self.entry_setpoint.insert(0, status_info['PID_setpoint'])
+        self.entry_setpoint.insert(0, rad_to_deg(status_info['PID_setpoint']))
         self.entry_duty_cycle_min.insert(0, status_info['MOTOR_DUTY_CYCLE_MIN'])
         self.entry_duty_cycle_max.insert(0, status_info['MOTOR_DUTY_CYCLE_MAX'])
-        self.entry_pitch_error_max.insert(0, status_info['PITCH_ANGLE_ERROR_MAX'])
-        self.entry_pitch_error_min.insert(0, status_info['PITCH_ANGLE_ERROR_MIN'])
+        self.entry_pitch_error_max.insert(0, rad_to_deg(status_info['PITCH_ANGLE_ERROR_MAX']))
+        self.entry_pitch_error_min.insert(0, rad_to_deg(status_info['PITCH_ANGLE_ERROR_MIN']))
         self.entry_motor_1_dir_manual.insert(0, status_info['MOTOR_1_DIR_MANUAL'])
         self.entry_motor_2_dir_manual.insert(0, status_info['MOTOR_2_DIR_MANUAL'])
         self.entry_motor_1_duty_cycle_manual.insert(0, status_info['MOTOR_1_DUTY_CYCLE_MANUAL'])
@@ -141,7 +150,7 @@ class App:
         self.post_request({'key': 'PID_Kd', 'value': self.entry_kd.get()})
 
     def send_setpoint(self):
-        self.post_request({'key': 'PID_setpoint', 'value': self.entry_setpoint.get()})
+        self.post_request({'key': 'PID_setpoint', 'value': deg_to_rad(self.entry_setpoint.get())})
     
     def send_duty_cycle_min(self):
         self.post_request({'key': 'MOTOR_DUTY_CYCLE_MIN', 'value': self.entry_duty_cycle_min.get()})
@@ -150,10 +159,10 @@ class App:
         self.post_request({'key': 'MOTOR_DUTY_CYCLE_MAX', 'value': self.entry_duty_cycle_max.get()})
     
     def send_pitch_err_max(self):
-        self.post_request({'key': 'PITCH_ANGLE_ERROR_MAX', 'value': self.entry_pitch_error_max.get()})
+        self.post_request({'key': 'PITCH_ANGLE_ERROR_MAX', 'value': deg_to_rad(self.entry_pitch_error_max.get())})
     
     def send_pitch_err_min(self):
-        self.post_request({'key': 'PITCH_ANGLE_ERROR_MIN', 'value': self.entry_pitch_error_min.get()})
+        self.post_request({'key': 'PITCH_ANGLE_ERROR_MIN', 'value': deg_to_rad(self.entry_pitch_error_min.get())})
     
     def send_motor1_dir_manual(self):
         self.post_request({'key': 'MOTOR_1_DIR_MANUAL', 'value': self.entry_motor_1_dir_manual.get()})
