@@ -7,65 +7,65 @@ class App:
         self.root.title("REST API Client")
 
         # input fields
-        self.field1_label = tk.Label(root, text="Kp")
-        self.field1_label.grid(row=0, column=0)
-        self.field1_entry = tk.Entry(root)
-        self.field1_entry.grid(row=0, column=1)
+        self.label_kp = tk.Label(root, text="Kp")
+        self.label_kp.grid(row=0, column=0)
+        self.entry_kp = tk.Entry(root)
+        self.entry_kp.grid(row=0, column=1)
 
-        self.field2_label = tk.Label(root, text="Ki")
-        self.field2_label.grid(row=1, column=0)
-        self.field2_entry = tk.Entry(root)
-        self.field2_entry.grid(row=1, column=1)
+        self.label_ki = tk.Label(root, text="Ki")
+        self.label_ki.grid(row=1, column=0)
+        self.entry_ki = tk.Entry(root)
+        self.entry_ki.grid(row=1, column=1)
 
-        self.field3_label = tk.Label(root, text="Kd")
-        self.field3_label.grid(row=2, column=0)
-        self.field3_entry = tk.Entry(root)
-        self.field3_entry.grid(row=2, column=1)
+        self.label_kd = tk.Label(root, text="Kd")
+        self.label_kd.grid(row=2, column=0)
+        self.entry_kd = tk.Entry(root)
+        self.entry_kd.grid(row=2, column=1)
 
-        self.field4_label = tk.Label(root, text="Setpoint")
-        self.field4_label.grid(row=3, column=0)
-        self.field4_entry = tk.Entry(root)
-        self.field4_entry.grid(row=3, column=1)
+        self.label_setpoint = tk.Label(root, text="Setpoint")
+        self.label_setpoint.grid(row=3, column=0)
+        self.entry_setpoint = tk.Entry(root)
+        self.entry_setpoint.grid(row=3, column=1)
 
-        self.field5_label = tk.Label(root, text="MOTOR_DUTY_CYCLE_MIN")
-        self.field5_label.grid(row=0, column=3)
-        self.field5_entry = tk.Entry(root)
-        self.field5_entry.grid(row=0, column=4)
+        self.label_duty_cycle_min = tk.Label(root, text="MOTOR_DUTY_CYCLE_MIN")
+        self.label_duty_cycle_min.grid(row=0, column=3)
+        self.entry_duty_cycle_min = tk.Entry(root)
+        self.entry_duty_cycle_min.grid(row=0, column=4)
 
-        self.field6_label = tk.Label(root, text="MOTOR_DUTY_CYCLE_MAX")
-        self.field6_label.grid(row=1, column=3)
-        self.field6_entry = tk.Entry(root)
-        self.field6_entry.grid(row=1, column=4)
+        self.label_duty_cycle_max = tk.Label(root, text="MOTOR_DUTY_CYCLE_MAX")
+        self.label_duty_cycle_max.grid(row=1, column=3)
+        self.entry_duty_cycle_max = tk.Entry(root)
+        self.entry_duty_cycle_max.grid(row=1, column=4)
 
-        self.field7_label = tk.Label(root, text="PITCH_ANGLE_ERROR_MAX")
-        self.field7_label.grid(row=2, column=3)
-        self.field7_entry = tk.Entry(root)
-        self.field7_entry.grid(row=2, column=4)
+        self.label_pitch_error_max = tk.Label(root, text="PITCH_ANGLE_ERROR_MAX")
+        self.label_pitch_error_max.grid(row=2, column=3)
+        self.entry_pitch_error_max = tk.Entry(root)
+        self.entry_pitch_error_max.grid(row=2, column=4)
 
-        self.field8_label = tk.Label(root, text="PITCH_ANGLE_ERROR_MIN")
-        self.field8_label.grid(row=3, column=3)
-        self.field8_entry = tk.Entry(root)
-        self.field8_entry.grid(row=3, column=4)
+        self.label_pitch_error_min = tk.Label(root, text="PITCH_ANGLE_ERROR_MIN")
+        self.label_pitch_error_min.grid(row=3, column=3)
+        self.entry_pitch_error_min = tk.Entry(root)
+        self.entry_pitch_error_min.grid(row=3, column=4)
 
-        self.field9_label = tk.Label(root, text="MOTOR_1_DIR_MANUAL")
-        self.field9_label.grid(row=0, column=6)
-        self.field9_entry = tk.Entry(root)
-        self.field9_entry.grid(row=0, column=7)
+        self.label_motor_1_dir_manual = tk.Label(root, text="MOTOR_1_DIR_MANUAL")
+        self.label_motor_1_dir_manual.grid(row=0, column=6)
+        self.entry_motor_1_dir_manual = tk.Entry(root)
+        self.entry_motor_1_dir_manual.grid(row=0, column=7)
 
-        self.field10_label = tk.Label(root, text="MOTOR_2_DIR_MANUAL")
-        self.field10_label.grid(row=1, column=6)
-        self.field10_entry = tk.Entry(root)
-        self.field10_entry.grid(row=1, column=7)
+        self.label_motor_2_dir_manual = tk.Label(root, text="MOTOR_2_DIR_MANUAL")
+        self.label_motor_2_dir_manual.grid(row=1, column=6)
+        self.entry_motor_2_dir_manual = tk.Entry(root)
+        self.entry_motor_2_dir_manual.grid(row=1, column=7)
 
-        self.field11_label = tk.Label(root, text="MOTOR_1_DUTY_CYCLE_MANUAL")
-        self.field11_label.grid(row=2, column=6)
-        self.field11_entry = tk.Entry(root)
-        self.field11_entry.grid(row=2, column=7)
+        self.label_motor_1_duty_cycle_manual = tk.Label(root, text="MOTOR_1_DUTY_CYCLE_MANUAL")
+        self.label_motor_1_duty_cycle_manual.grid(row=2, column=6)
+        self.entry_motor_1_duty_cycle_manual = tk.Entry(root)
+        self.entry_motor_1_duty_cycle_manual.grid(row=2, column=7)
 
-        self.field12_label = tk.Label(root, text="MOTOR_2_DUTY_CYCLE_MANUAL")
-        self.field12_label.grid(row=3, column=6)
-        self.field12_entry = tk.Entry(root)
-        self.field12_entry.grid(row=3, column=7)
+        self.label_motor_2_duty_cycle_manual = tk.Label(root, text="MOTOR_2_DUTY_CYCLE_MANUAL")
+        self.label_motor_2_duty_cycle_manual.grid(row=3, column=6)
+        self.entry_motor_2_duty_cycle_manual = tk.Entry(root)
+        self.entry_motor_2_duty_cycle_manual.grid(row=3, column=7)
 
         self.drive_mode = tk.StringVar()
         self.field13_label = tk.Label(root, text="Drive Mode")
@@ -114,43 +114,43 @@ class App:
         self.button12.grid(row=3, column=8)
 
     def send_Kp(self):
-        self.send_request({'key': 'PID_Kp', 'value': self.field1_entry.get()})
+        self.post_request({'key': 'PID_Kp', 'value': self.entry_kp.get()})
 
     def send_Ki(self):
-        self.send_request({'key': 'PID_Ki', 'value': self.field2_entry.get()})
+        self.post_request({'key': 'PID_Ki', 'value': self.entry_ki.get()})
 
     def send_Kd(self):
-        self.send_request({'key': 'PID_Kd', 'value': self.field3_entry.get()})
+        self.post_request({'key': 'PID_Kd', 'value': self.entry_kd.get()})
 
     def send_setpoint(self):
-        self.send_request({'key': 'PID_setpoint', 'value': self.field4_entry.get()})
+        self.post_request({'key': 'PID_setpoint', 'value': self.entry_setpoint.get()})
     
     def send_duty_cycle_min(self):
-        self.send_request({'key': 'MOTOR_DUTY_CYCLE_MIN', 'value': self.field5_entry.get()})
+        self.post_request({'key': 'MOTOR_DUTY_CYCLE_MIN', 'value': self.entry_duty_cycle_min.get()})
     
     def send_duty_cycle_max(self):
-        self.send_request({'key': 'MOTOR_DUTY_CYCLE_MAX', 'value': self.field6_entry.get()})
+        self.post_request({'key': 'MOTOR_DUTY_CYCLE_MAX', 'value': self.entry_duty_cycle_max.get()})
     
     def send_pitch_err_max(self):
-        self.send_request({'key': 'PITCH_ANGLE_ERROR_MAX', 'value': self.field7_entry.get()})
+        self.post_request({'key': 'PITCH_ANGLE_ERROR_MAX', 'value': self.entry_pitch_error_max.get()})
     
     def send_pitch_err_min(self):
-        self.send_request({'key': 'PITCH_ANGLE_ERROR_MIN', 'value': self.field8_entry.get()})
+        self.post_request({'key': 'PITCH_ANGLE_ERROR_MIN', 'value': self.entry_pitch_error_min.get()})
     
     def send_motor1_dir_manual(self):
-        self.send_request({'key': 'MOTOR_1_DIR_MANUAL', 'value': self.field9_entry.get()})
+        self.post_request({'key': 'MOTOR_1_DIR_MANUAL', 'value': self.entry_motor_1_dir_manual.get()})
     
     def send_motor2_dir_manual(self):
-        self.send_request({'key': 'MOTOR_2_DIR_MANUAL', 'value': self.field10_entry.get()})
+        self.post_request({'key': 'MOTOR_2_DIR_MANUAL', 'value': self.entry_motor_2_dir_manual.get()})
     
     def send_motor1_duty_cycle_manual(self):
-        self.send_request({'key': 'MOTOR_1_DUTY_CYCLE_MANUAL', 'value': self.field11_entry.get()})
+        self.post_request({'key': 'MOTOR_1_DUTY_CYCLE_MANUAL', 'value': self.entry_motor_1_duty_cycle_manual.get()})
     
     def send_motor2_duty_cycle_manual(self):
-        self.send_request({'key': 'MOTOR_2_DUTY_CYCLE_MANUAL', 'value': self.field12_entry.get()})
+        self.post_request({'key': 'MOTOR_2_DUTY_CYCLE_MANUAL', 'value': self.entry_motor_2_duty_cycle_manual.get()})
     
     def on_drive_mode_toggled(self):
-        self.send_request({'key': 'CONTROL_MODE', 'value': self.drive_mode.get()})
+        self.post_request({'key': 'CONTROL_MODE', 'value': self.drive_mode.get()})
 
     def send_request(self, data):
         url = 'http://192.168.178.55/set-value'  # Replace with your actual server URL and endpoint
