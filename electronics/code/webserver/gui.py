@@ -93,6 +93,12 @@ class App:
         self.rb_manual = tk.Radiobutton(root, text='Manual', variable=self.drive_mode, value='MANUAL', command=self.on_drive_mode_toggled)
         self.rb_manual.grid(row=4, column=6)
 
+        self.label_pitch_current = tk.Label(root, text="Pitch current [deg]")
+        self.label_pitch_current.grid(row=4, column=0)
+        self.entry_pitch_current = tk.Entry(root)
+        self.entry_pitch_current.grid(row=4, column=1)
+        self.entry_pitch_current.configure(state='readonly')
+
         # buttons
         self.button1 = tk.Button(root, text="Submit Kp", command=self.send_Kp)
         self.button1.grid(row=0, column=2)
@@ -131,7 +137,7 @@ class App:
         self.button14.grid(row=0, column=9)
 
         # get initial status of all variables from robot
-        status_info = self.refresh_statuses()
+        self.refresh_statuses()
 
     def send_Kp(self):
         self.post_request({'key': 'PID_Kp', 'value': self.entry_kp.get()})
@@ -143,7 +149,7 @@ class App:
         self.post_request({'key': 'PID_Kd', 'value': self.entry_kd.get()})
 
     def send_setpoint(self):
-        self.post_request({'key': 'PID_setpoint', 'value': deg_to_rad(self.entry_setpoint.get())})
+        self.post_request({'key': 'PID_setpoint', 'value': deg_to_rad(float(self.entry_setpoint.get()))})
     
     def send_duty_cycle_min(self):
         self.post_request({'key': 'MOTOR_DUTY_CYCLE_MIN', 'value': self.entry_duty_cycle_min.get()})
@@ -152,10 +158,10 @@ class App:
         self.post_request({'key': 'MOTOR_DUTY_CYCLE_MAX', 'value': self.entry_duty_cycle_max.get()})
     
     def send_pitch_err_max(self):
-        self.post_request({'key': 'PITCH_ANGLE_ERROR_MAX', 'value': deg_to_rad(self.entry_pitch_error_max.get())})
+        self.post_request({'key': 'PITCH_ANGLE_ERROR_MAX', 'value': deg_to_rad(float(self.entry_pitch_error_max.get()))})
     
     def send_pitch_err_min(self):
-        self.post_request({'key': 'PITCH_ANGLE_ERROR_MIN', 'value': deg_to_rad(self.entry_pitch_error_min.get())})
+        self.post_request({'key': 'PITCH_ANGLE_ERROR_MIN', 'value': deg_to_rad(float(self.entry_pitch_error_min.get()))})
     
     def send_motor1_dir_manual(self):
         self.post_request({'key': 'MOTOR_1_DIR_MANUAL', 'value': self.entry_motor_1_dir_manual.get()})
@@ -230,6 +236,10 @@ class App:
         self.drive_mode.set(status_info['CONTROL_MODE'])
         self.motor_1_dir_manual.set(status_info['MOTOR_1_DIR_MANUAL'])
         self.motor_2_dir_manual.set(status_info['MOTOR_2_DIR_MANUAL'])
+
+        self.entry_pitch_current.configure(state='normal')
+        writeEntry(self.entry_pitch_current, rad_to_deg(status_info['pitch_angle_current']))
+        self.entry_pitch_current.configure(state='readonly')
 
 
 if __name__ == "__main__":

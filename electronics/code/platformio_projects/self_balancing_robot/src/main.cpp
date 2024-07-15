@@ -485,6 +485,7 @@ void initWebserver() {
     jsonDoc["PID_Ki"] = pid.ki;
     jsonDoc["PID_Kd"] = pid.kd;
     jsonDoc["PID_setpoint"] = pitch_angle_setpoint;
+    jsonDoc["pitch_angle_current"] = pitch_angle_current;
     jsonDoc["MOTOR_DUTY_CYCLE_MIN"] = DUTY_CYCLE_MIN;
     jsonDoc["MOTOR_DUTY_CYCLE_MAX"] = DUTY_CYCLE_MAX;
     jsonDoc["PITCH_ANGLE_ERROR_MAX"] = PITCH_ANGLE_ERROR_MAX;
