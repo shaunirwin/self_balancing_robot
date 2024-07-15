@@ -9,7 +9,7 @@ ser = serial.Serial(port='/dev/ttyACM0',
 
 ser.reset_input_buffer()
 
-msg_type = 'control_packet'
+msg_type = 'state_estimate'
 
     # float pitch_setpoint;
     # float pitch_current;

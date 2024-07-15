@@ -130,7 +130,7 @@ float PITCH_ANGLE_ERROR_MAX = 25.f*PI/180.f;   // maximum pitch angle error befo
 float PITCH_ANGLE_ERROR_MIN = 0.5f*PI/180.f;   // minimumpitch angle error before motors cut off
 
 // PID variables
-double pitch_angle_setpoint = -7.0*PI/180;  // desired pitch angle [rad]
+double pitch_angle_setpoint = -3.7*PI/180;  // desired pitch angle [rad]
 double pitch_angle_current = 0;        // current pitch angle [rad]
 
 // PID controller
@@ -139,6 +139,19 @@ PropIntDiff pid(-1., 1., 1.);
 void IRAM_ATTR stateEstimatorTimer(){
   // Give the semaphore to unblock the task
   xSemaphoreGiveFromISR(timerSemaphore, NULL);
+}
+
+uint correctMotor2DutyCycle(const uint dutyCycle) {
+  // correct motor 2's commanded duty cycle to ensure resultant speed is same as motor 1 when commanded to have the same duty cycle
+
+  const float m1 = 0.01676954f;   // slope motor 1 graph of speed as a function of duty cycle
+  const float b1 = -0.0466465f;   // intercept motor 1 graph of speed as a function of duty cycle
+  const float m2 = 0.01765459f;   // slope motor 2 graph of speed as a function of duty cycle
+  const float b2 = -0.09230133f;  // intercept motor 2 graph of speed as a function of duty cycle
+
+  const float dutyCycleCorrected = ((m1 * dutyCycle + b1) - b2) / m2;
+
+  return static_cast<uint>(dutyCycleCorrected);
 }
 
 // Task to be executed periodically
@@ -170,6 +183,8 @@ void taskEstimateState(void * parameter) {
     uint wheel_velocity_estimator_step_count = WHEEL_VELOCITY_ESTIMATOR_TIME_STEPS;   // keep track of how many steps since last velocity measurement taken
     long motor1EncoderPulsesDelta = 0;
     long motor2EncoderPulsesDelta = 0;
+    uint txCount = 0;    // used for keeping track of frequency of transmitting over serial
+    const uint TX_PERIOD = 10;
 
     for (;;) {
         // Wait until data is available in the queue
@@ -222,9 +237,14 @@ void taskEstimateState(void * parameter) {
             // stateEstimatePacket.motor2DirMeas = static_cast<signed char>(motor2DirMeas);
             stateEstimatePacket.pitch_velocity_gyro = deltaAngularRateGyro;   // TODO: should it be -pitchAngularRateGyro instead?
             
-            // Serial.write(STX);
-            // Serial.write( (uint8_t *) &stateEstimatePacket, sizeof( stateEstimatePacket ) );
-            // Serial.write(ETX);
+            txCount ++;
+            if (txCount == TX_PERIOD) {
+              Serial.write(STX);
+              Serial.write( (uint8_t *) &stateEstimatePacket, sizeof( stateEstimatePacket ) );
+              Serial.write(ETX);
+
+              txCount = 0;
+            }
 
             if (xQueueSend(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) != pdPASS) {
                 Serial.println("Failed to send to state estimate queue");
@@ -263,9 +283,9 @@ void taskControlMotors(void * parameter) {
       controlPacket.motorDir = static_cast<int>(motorDirAuto);
       controlPacket.dutyCycle = dutyCycleAuto;
 
-      Serial.write(STX);
-      Serial.write( (uint8_t *) &controlPacket, sizeof( controlPacket ) );
-      Serial.write(ETX);
+      // Serial.write(STX);
+      // Serial.write( (uint8_t *) &controlPacket, sizeof( controlPacket ) );
+      // Serial.write(ETX);
 
       // adjust the PWM to each motor independently to ensure speed is equal
       const uint dutyCycle1Auto = dutyCycleAuto; // + dutyCycleDiff;
@@ -293,8 +313,11 @@ void taskControlMotors(void * parameter) {
         motor2dirActual = !motor2dirActual;
       }
 
+      // correct motor2's duty cycle to ensure motors spin at same speed when same duty cycle commanded
+      uint dutyCycle2Calibrated = correctMotor2DutyCycle(dutyCycle2);
+
       ledcWrite(MOTOR1_PWM_CHANNEL, dutyCycle1);
-      ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle2);
+      ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle2Calibrated);
       digitalWrite(PIN_MOTOR1_DIR, motor1dirActual);
       digitalWrite(PIN_MOTOR2_DIR, motor2dirActual);
     }
