@@ -59,6 +59,8 @@ volatile int motor1DirMeas = 0;   // 0: stopped, 1: forward, -1: backward
 volatile long motor2EncoderPulses = 0;
 volatile int motor2DirMeas = 0;
 
+long long packetID = 0;
+
 typedef struct {
     int16_t ax;
     int16_t ay;
@@ -238,12 +240,16 @@ void taskEstimateState(void * parameter) {
             stateEstimatePacket.pitch_velocity_gyro = deltaAngularRateGyro;   // TODO: should it be -pitchAngularRateGyro instead?
             
             txCount ++;
+            const int64_t microSecondsSinceBoot = esp_timer_get_time();
             if (txCount == TX_PERIOD) {
               Serial.write(STX);
+              Serial.write( (uint8_t *) &packetID, sizeof( packetID ));
+              Serial.write( (uint8_t *) &microSecondsSinceBoot, sizeof( microSecondsSinceBoot ));
               Serial.write( (uint8_t *) &stateEstimatePacket, sizeof( stateEstimatePacket ) );
               Serial.write(ETX);
 
               txCount = 0;
+              packetID += 1;
             }
 
             if (xQueueSend(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) != pdPASS) {
@@ -284,8 +290,11 @@ void taskControlMotors(void * parameter) {
       controlPacket.dutyCycle = dutyCycleAuto;
 
       // Serial.write(STX);
+      // Serial.write( (uint8_t *) &packetID, sizeof( packetID ));
+      // Serial.write( (uint8_t *) &microSecondsSinceBoot, sizeof( microSecondsSinceBoot ));
       // Serial.write( (uint8_t *) &controlPacket, sizeof( controlPacket ) );
       // Serial.write(ETX);
+      // packetID += 1;
 
       // adjust the PWM to each motor independently to ensure speed is equal
       const uint dutyCycle1Auto = dutyCycleAuto; // + dutyCycleDiff;
