@@ -109,7 +109,7 @@ float pitchAngleGyro = 0;             // [rad]
 float pitchAngleEst = 0;              // [rad]
 
 // hardware timer
-const int ESTIMATOR_FREQ = 250;        // frequency to run state estimator at [Hz]
+const int ESTIMATOR_FREQ = 200; //250;        // frequency to run state estimator at [Hz]
 const float ALPHA = 0.98;             // gyro weight for complementary filter
 hw_timer_t *hwTimer = NULL;
 volatile SemaphoreHandle_t timerSemaphore;
