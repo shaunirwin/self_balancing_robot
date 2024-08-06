@@ -132,11 +132,11 @@ float PITCH_ANGLE_ERROR_MAX = 25.f*PI/180.f;   // maximum pitch angle error befo
 float PITCH_ANGLE_ERROR_MIN = 0.5f*PI/180.f;   // minimumpitch angle error before motors cut off
 
 // PID variables
-double pitch_angle_setpoint = -3.7*PI/180;  // desired pitch angle [rad]
-double pitch_angle_current = 0;        // current pitch angle [rad]
+float pitch_angle_setpoint = -3.7*PI/180;  // desired pitch angle [rad]
+float pitch_angle_current = 0;        // current pitch angle [rad]
 
 // PID controller
-PropIntDiff pid(-1., 1., 1.);
+PropIntDiff pid(-1.f, 1.f, 1.f);
 
 void IRAM_ATTR stateEstimatorTimer(){
   // Give the semaphore to unblock the task
@@ -266,26 +266,24 @@ void taskControlMotors(void * parameter) {
   for (;;) {
     // Wait until data is available in the queue
     if (xQueueReceive(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) == pdPASS) {
-      const float pitchAngleEst = stateEstimatePacket.pitch_est;
-
-      pitch_angle_current = static_cast<double>(pitchAngleEst);
+      pitch_angle_current = stateEstimatePacket.pitch_est;
 
       // Compute the PID output
       pid.calculate(pitch_angle_setpoint, pitch_angle_current, stateEstimatePacket.pitch_velocity_gyro);
 
-      const double motorPerc = pid.Output;
+      const float motorPerc = pid.Output;
       const MotorDirection motorDirAuto = motorPerc < 0 ? MotorDirection::FORWARD : MotorDirection::REVERSE;
 
       const bool pitch_error_exceeded = abs(pitch_angle_current - pitch_angle_setpoint) >= PITCH_ANGLE_ERROR_MAX;
       const bool pitch_error_small = abs(pitch_angle_current - pitch_angle_setpoint) <= PITCH_ANGLE_ERROR_MIN;
       const bool motor_power_too_low = abs(motorPerc) < 0.05;
       const bool disable_motors = pitch_error_exceeded || pitch_error_small || motor_power_too_low;
-      const uint dutyCycleAuto = disable_motors ? 0 : static_cast<uint>(static_cast<double>(DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * abs(motorPerc) + static_cast<double>(DUTY_CYCLE_MIN));
+      const uint dutyCycleAuto = disable_motors ? 0 : static_cast<uint>(static_cast<float>(DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * abs(motorPerc) + static_cast<float>(DUTY_CYCLE_MIN));
 
-      controlPacket.pitch_setpoint = static_cast<float>(pitch_angle_setpoint);
-      controlPacket.pitch_current = static_cast<float>(pitch_angle_current);
-      controlPacket.pitch_error = static_cast<float>(pitch_angle_current - pitch_angle_setpoint);
-      controlPacket.motorSpeed = static_cast<float>(motorPerc);
+      controlPacket.pitch_setpoint = pitch_angle_setpoint;
+      controlPacket.pitch_current = pitch_angle_current;
+      controlPacket.pitch_error = pitch_angle_current - pitch_angle_setpoint;
+      controlPacket.motorSpeed = motorPerc;
       controlPacket.motorDir = static_cast<int>(motorDirAuto);
       controlPacket.dutyCycle = dutyCycleAuto;
 
@@ -565,8 +563,8 @@ void initWebserver() {
     bool convertedSuccessfully {false};
 
     if (key == "PID_Kp") {
-      double temp;
-      convertedSuccessfully = convertStringToDouble(value, temp);
+      float temp;
+      convertedSuccessfully = convertStringToFloat(value, temp);
 
       if (convertedSuccessfully) {
         pid.kp = temp;
@@ -574,8 +572,8 @@ void initWebserver() {
       }
     }
     else if (key == "PID_Ki") {
-      double temp;
-      convertedSuccessfully = convertStringToDouble(value, temp);
+      float temp;
+      convertedSuccessfully = convertStringToFloat(value, temp);
 
       if (convertedSuccessfully) {
         pid.ki = temp;
@@ -583,8 +581,8 @@ void initWebserver() {
       }
     }
     else if (key == "PID_Kd") {
-      double temp;
-      convertedSuccessfully = convertStringToDouble(value, temp);
+      float temp;
+      convertedSuccessfully = convertStringToFloat(value, temp);
 
       if (convertedSuccessfully) {
         pid.kd = temp;
@@ -592,8 +590,8 @@ void initWebserver() {
       }
     }
     else if (key == "PID_setpoint") {
-      double temp;
-      convertedSuccessfully = convertStringToDouble(value, temp) && (temp >= -25.) && (temp <= 25.);
+      float temp;
+      convertedSuccessfully = convertStringToFloat(value, temp) && (temp >= -25.) && (temp <= 25.);
 
       if (convertedSuccessfully) {
         pitch_angle_setpoint = temp;

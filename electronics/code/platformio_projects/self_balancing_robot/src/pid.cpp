@@ -5,7 +5,7 @@
 //----------------------------------------------------------------------------------------------------
 // PID Controller
 // Class contructor - initialize "memory" variables, set PID limits
-PropIntDiff::PropIntDiff(double MINlimit, double MAXlimit, double Threshold) {
+PropIntDiff::PropIntDiff(float MINlimit, float MAXlimit, float Threshold) {
   ITerm = 0.0;
   lastInput = 0.0;
   inAuto = true;              // Default to auto mode
@@ -21,7 +21,7 @@ void PropIntDiff::initialize() {
 }
 
 // Calculate PID update
-void PropIntDiff::calculate(double Setpoint, double Input) {
+void PropIntDiff::calculate(float Setpoint, float Input) {
    // Check whether PID is in auto or manual
    if(!inAuto) return;
    
@@ -47,7 +47,7 @@ void PropIntDiff::calculate(double Setpoint, double Input) {
 }
 
 // Calculate PID update, with D as an input
-void PropIntDiff::calculate(double Setpoint, double Input, double dInput) {
+void PropIntDiff::calculate(float Setpoint, float Input, float dInput) {
    // Check whether PID is in auto or manual
    if(!inAuto) return;
    
