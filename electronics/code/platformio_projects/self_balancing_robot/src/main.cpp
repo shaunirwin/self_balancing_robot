@@ -135,12 +135,37 @@ float PITCH_ANGLE_ERROR_MIN = 0.5f*PI/180.f;   // minimumpitch angle error befor
 float pitch_angle_setpoint = -3.7*PI/180;  // desired pitch angle [rad]
 float pitch_angle_current = 0;        // current pitch angle [rad]
 
+// for logging data and sending to base station afterwards
+typedef struct {
+    float pitch_current;
+    float pitch_gyro;
+
+    float motorSpeed;
+    int motorDir1;
+    uint dutyCycle1;
+    // uint dutyCycle2;
+
+} LogPacket_t;
+
+const long NUM_LOG_PACKETS = 30 * ESTIMATOR_FREQ; // log duration [s] * packets/sec
+LogPacket_t logPackets[NUM_LOG_PACKETS];
+bool enableLogging = false;
+uint logIndex = 0;
 // PID controller
 PropIntDiff pid(-1.f, 1.f, 1.f);
 
 void IRAM_ATTR stateEstimatorTimer(){
   // Give the semaphore to unblock the task
   xSemaphoreGiveFromISR(timerSemaphore, NULL);
+}
+
+void startLogging() {
+  enableLogging = true;
+  logIndex = 0;
+}
+
+void stopLogging() {
+  enableLogging = false;
 }
 
 uint correctMotor2DutyCycle(const uint dutyCycle) {
@@ -327,6 +352,20 @@ void taskControlMotors(void * parameter) {
       ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle2Calibrated);
       digitalWrite(PIN_MOTOR1_DIR, motor1dirActual);
       digitalWrite(PIN_MOTOR2_DIR, motor2dirActual);
+
+      // log data to RAM
+      if (enableLogging) {
+        if (logIndex == NUM_LOG_PACKETS) {
+          stopLogging();
+        }
+        logPackets[logIndex].pitch_current = pitch_angle_current;
+        logPackets[logIndex].pitch_gyro = pitchAngleGyro;
+        logPackets[logIndex].dutyCycle1 = dutyCycle1;
+        logPackets[logIndex].motorDir1 = motor1dirActual;
+        logPackets[logIndex].motorSpeed = pid.Output;
+
+        logIndex ++;
+      }
     }
   }
 }
@@ -533,6 +572,22 @@ void initWebserver() {
     request->send(200, "application/json", jsonString);
   });
 
+  server.on("/logs", HTTP_GET, [](AsyncWebServerRequest *request){
+    // stop logging before getting the data
+    stopLogging();
+
+    JsonDocument jsonDoc;
+    // (uint8_t *) &microSecondsSinceBoot, sizeof( microSecondsSinceBoot )
+    jsonDoc["data"] = JsonString{(char *) &logPackets, sizeof(logPackets)};
+    jsonDoc["num_packets_logged"] = logIndex;
+
+    String jsonString;
+    serializeJson(jsonDoc, jsonString);
+
+    // Send JSON response
+    request->send(200, "application/json", jsonString);
+  });
+
   server.on("/set-value", HTTP_POST, [](AsyncWebServerRequest *request) {
     // std::set<String> keys {"PID_Kp", "PID_Ki", "PID_Kd"}; //, "MOTOR_DUTY_CYCLE_MIN", "MOTOR_DUTY_CYCLE_MAX"};
     String key {""};
@@ -697,6 +752,16 @@ void initWebserver() {
       stopMotors();
       convertedSuccessfully = true;
       jsonDoc["value"] = "";
+    }
+    else if (key == "START_LOGGING") {
+      startLogging();
+      convertedSuccessfully = true;
+      jsonDoc["value"] = enableLogging;
+    }
+    else if (key == "STOP_LOGGING") {
+      stopLogging();
+      convertedSuccessfully = true;
+      jsonDoc["value"] = enableLogging;
     }
     else {
       request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Key invalid\"}");
