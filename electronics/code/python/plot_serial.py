@@ -39,7 +39,7 @@ accel_range = 2     # +-2g
 gyro_range = 250    # +- 250 deg/sec
 accel_resolution = accel_range / 16384.0
 gyro_resolution = gyro_range / 16384.0
-imu_sample_freq = 200 #250   # Hz
+imu_sample_freq = 100 #250   # Hz
 wheel_velocity_measurement_timesteps = 25   # num estimator time steps that encoder pulses are recorded for velocity
 
 gyro_raw_hist = []      # store initial guro values to calculate offset
@@ -51,8 +51,8 @@ gyro_is_calibrated = False
 alpha = 0.98
 pitch_angle_est = 0
 
-wheel_diameter = 0.0815     # [m]
-pulses_per_revolution = 464
+wheel_diameter = 0.0618     # [m]
+pulses_per_revolution = 700
 distance_per_pulse = wheel_diameter * np.pi / pulses_per_revolution   # [m]
 
 while True:
