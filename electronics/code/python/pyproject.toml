@@ -1,0 +1,11 @@
+[project]
+name = "self_balancing_robot_python"
+version = "0.1.0"
+description = "Sets up the environment for reading serial data from the robot and running various scripts"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "pyserial"
+]
