@@ -109,7 +109,7 @@ float pitchAngleGyro = 0;             // [rad]
 float pitchAngleEst = 0;              // [rad]
 
 // hardware timer
-const int ESTIMATOR_FREQ = 200; //250;        // frequency to run state estimator at [Hz]
+const int ESTIMATOR_FREQ = 100; //250;        // frequency to run state estimator at [Hz]
 const float ALPHA = 0.98;             // gyro weight for complementary filter
 hw_timer_t *hwTimer = NULL;
 volatile SemaphoreHandle_t timerSemaphore;
@@ -204,7 +204,7 @@ void taskEstimateState(void * parameter) {
     long motor1EncoderPulsesLastUpdate = 0;       // pulses since last state estimator update
     long motor2EncoderPulsesLastUpdate = 0;
 
-    const float WHEEL_DIAMETER = 0.0815;  // [m]
+    const float WHEEL_DIAMETER = 0.0618;  // [m]
     const float DISTANCE_PER_PULSE = PI * WHEEL_DIAMETER / ENCODER_PULSES_PER_REVOLUTION;
     const uint WHEEL_VELOCITY_ESTIMATOR_TIME_STEPS = 25;  // number of time steps of the estimator period used to calculate wheel velocity over
     uint wheel_velocity_estimator_step_count = WHEEL_VELOCITY_ESTIMATOR_TIME_STEPS;   // keep track of how many steps since last velocity measurement taken
