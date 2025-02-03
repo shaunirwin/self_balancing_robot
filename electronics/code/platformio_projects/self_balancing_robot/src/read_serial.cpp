@@ -2,9 +2,26 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <termios.h>
+#include <cstring>
 
 #define SERIAL_PORT "/dev/ttyACM0"  // Adjust this to your serial device
 #define BAUDRATE B115200
+
+
+// struct DataPacket {
+//     // float value;
+//     // bool flag;
+//     char a;
+//     char b;
+//     char c;
+// } __attribute__((packed));      // ensure no padding
+
+typedef struct {
+  float testVal;
+  char c;
+  bool b;
+} __attribute__((packed))  DataPacket;
+
 
 int configureSerial(const char* port) {
     int fd = open(port, O_RDWR | O_NOCTTY | O_NONBLOCK);  // Open serial port
@@ -50,22 +67,37 @@ int configureSerial(const char* port) {
 }
 
 void readSerial(int fd) {
-    char buffer[3];  // We expect 3 characters "!X@"
+    const uint DATA_LENGTH = sizeof(DataPacket);
+    const auto PACKET_LENGTH = DATA_LENGTH + 2;
+    char buffer[PACKET_LENGTH];  // We expect 3 characters "!X@"
     int index = 0;
 
     while (true) {
         char c;
         int n = read(fd, &c, 1);  // Read one byte
 
-        if (n > 0) {
+        if (n <= 0) {
+            continue;
+        }
+        
+        if ((index == 0) && (c != '!')) {
+            continue;
+        }
+        
+        {
+
             buffer[index++] = c;
 
             // Check if we received "!X@"
-            if (index == 3) {
-                if (buffer[0] == '!' && buffer[2] == '@') {
-                    std::cout << "Received valid message: " << buffer[1] << std::endl;
+            if (index == PACKET_LENGTH) {
+                std::cout << "whole buffer:" << buffer << std::endl;
+                if (buffer[0] == '!' && buffer[PACKET_LENGTH-1] == '@') {
+                    DataPacket data;
+                    std::memcpy(&data, &buffer[1], sizeof(DataPacket));
+
+                    std::cout << "Received valid message: " << data.testVal << ", " << data.b << ", " << data.c << std::endl;
                 } else {
-                    std::cerr << "Invalid message: " << buffer[0] << buffer[1] << buffer[2] << std::endl;
+                    std::cerr << "Invalid packet received" << std::endl;
                 }
                 index = 0; // Reset buffer
             }

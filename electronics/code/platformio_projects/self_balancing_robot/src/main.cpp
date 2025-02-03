@@ -62,6 +62,12 @@ volatile int motor2DirMeas = 0;
 long long packetID = 0;
 
 typedef struct {
+  float testVal;
+  char c;
+  bool b;
+} __attribute__((packed)) TestPacket_t;
+
+typedef struct {
     int16_t ax;
     int16_t ay;
     int16_t az;
@@ -265,12 +271,14 @@ void taskEstimateState(void * parameter) {
             stateEstimatePacket.pitch_velocity_gyro = deltaAngularRateGyro;   // TODO: should it be -pitchAngularRateGyro instead?
             
             txCount ++;
+            TestPacket_t testPacket;
+            testPacket.testVal = 46.3f;
+            testPacket.c = '8';
+            testPacket.b = false;
             const int64_t microSecondsSinceBoot = esp_timer_get_time();
             if (txCount == TX_PERIOD) {
               Serial.write(STX);
-              Serial.write( (uint8_t *) &packetID, sizeof( packetID ));
-              Serial.write( (uint8_t *) &microSecondsSinceBoot, sizeof( microSecondsSinceBoot ));
-              Serial.write( (uint8_t *) &stateEstimatePacket, sizeof( stateEstimatePacket ) );
+              Serial.write( (uint8_t *) &testPacket, sizeof( testPacket ) );
               Serial.write(ETX);
 
               txCount = 0;
@@ -862,8 +870,8 @@ void setup(){
   pid.kd = 0.0;
   pid.inAuto = true;
 
-  initWiFi();
-  initWebserver();
+  // initWiFi();
+  // initWebserver();
 }
  
 // void loop(){
