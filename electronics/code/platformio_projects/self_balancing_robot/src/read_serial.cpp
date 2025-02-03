@@ -17,6 +17,11 @@
 // } __attribute__((packed));      // ensure no padding
 
 typedef struct {
+  long long packetID;
+  int64_t microSecondsSinceBoot;
+} __attribute__((packed)) PacketHeader_t;
+
+typedef struct {
   float testVal;
   char c;
   bool b;
@@ -67,9 +72,10 @@ int configureSerial(const char* port) {
 }
 
 void readSerial(int fd) {
+    const uint HEADER_LENGTH = sizeof(PacketHeader_t);
     const uint DATA_LENGTH = sizeof(DataPacket);
-    const auto PACKET_LENGTH = DATA_LENGTH + 2;
-    char buffer[PACKET_LENGTH];  // We expect 3 characters "!X@"
+    const auto PACKET_LENGTH = HEADER_LENGTH + DATA_LENGTH + 2;
+    char buffer[PACKET_LENGTH];  // We expect "!<header packet><data packet>@"
     int index = 0;
 
     while (true) {
@@ -88,14 +94,14 @@ void readSerial(int fd) {
 
             buffer[index++] = c;
 
-            // Check if we received "!X@"
             if (index == PACKET_LENGTH) {
-                std::cout << "whole buffer:" << buffer << std::endl;
                 if (buffer[0] == '!' && buffer[PACKET_LENGTH-1] == '@') {
+                    PacketHeader_t header;
                     DataPacket data;
-                    std::memcpy(&data, &buffer[1], sizeof(DataPacket));
+                    std::memcpy(&header, &buffer[1], sizeof(PacketHeader_t));
+                    std::memcpy(&data, &buffer[HEADER_LENGTH + 1], sizeof(DataPacket));
 
-                    std::cout << "Received valid message: " << data.testVal << ", " << data.b << ", " << data.c << std::endl;
+                    std::cout << "Received valid message: " << header.packetID << ":" << data.testVal << ", " << data.b << ", " << data.c << std::endl;
                 } else {
                     std::cerr << "Invalid packet received" << std::endl;
                 }

@@ -68,6 +68,11 @@ typedef struct {
 } __attribute__((packed)) TestPacket_t;
 
 typedef struct {
+  long long packetID;
+  int64_t microSecondsSinceBoot;
+} __attribute__((packed)) PacketHeader_t;
+
+typedef struct {
     int16_t ax;
     int16_t ay;
     int16_t az;
@@ -275,9 +280,13 @@ void taskEstimateState(void * parameter) {
             testPacket.testVal = 46.3f;
             testPacket.c = '8';
             testPacket.b = false;
-            const int64_t microSecondsSinceBoot = esp_timer_get_time();
             if (txCount == TX_PERIOD) {
+              PacketHeader_t packetHeader;
+              packetHeader.packetID = packetID;
+              packetHeader.microSecondsSinceBoot = esp_timer_get_time();
+
               Serial.write(STX);
+              Serial.write( (uint8_t *) &packetHeader, sizeof( packetHeader ) );
               Serial.write( (uint8_t *) &testPacket, sizeof( testPacket ) );
               Serial.write(ETX);
 
