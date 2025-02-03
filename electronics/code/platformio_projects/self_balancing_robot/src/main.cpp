@@ -79,7 +79,7 @@ typedef struct {
     int16_t gx;
     int16_t gy;
     int16_t gz;
-} IMUPacket_t;
+} __attribute__((packed)) IMUPacket_t;
 
 typedef struct {
   // IMU estimates
@@ -101,7 +101,7 @@ typedef struct {
   // gyro angular velocity measurement
   float pitch_velocity_gyro;
 
-} StateEstimatePacket_t;
+} __attribute__((packed)) StateEstimatePacket_t;
 
 typedef struct {
     float pitch_setpoint;
@@ -112,7 +112,7 @@ typedef struct {
     int motorDir;
     uint dutyCycle;
 
-} ControlPacket_t;
+} __attribute__((packed)) ControlPacket_t;
 
 float accel_resolution = 0;
 float gyro_resolution = 0;
@@ -276,10 +276,6 @@ void taskEstimateState(void * parameter) {
             stateEstimatePacket.pitch_velocity_gyro = deltaAngularRateGyro;   // TODO: should it be -pitchAngularRateGyro instead?
             
             txCount ++;
-            TestPacket_t testPacket;
-            testPacket.testVal = 46.3f;
-            testPacket.c = '8';
-            testPacket.b = false;
             if (txCount == TX_PERIOD) {
               PacketHeader_t packetHeader;
               packetHeader.packetID = packetID;
@@ -287,7 +283,7 @@ void taskEstimateState(void * parameter) {
 
               Serial.write(STX);
               Serial.write( (uint8_t *) &packetHeader, sizeof( packetHeader ) );
-              Serial.write( (uint8_t *) &testPacket, sizeof( testPacket ) );
+              Serial.write( (uint8_t *) &stateEstimatePacket, sizeof( stateEstimatePacket ) );
               Serial.write(ETX);
 
               txCount = 0;

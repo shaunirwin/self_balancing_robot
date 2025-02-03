@@ -7,25 +7,38 @@
 #define SERIAL_PORT "/dev/ttyACM0"  // Adjust this to your serial device
 #define BAUDRATE B115200
 
-
-// struct DataPacket {
-//     // float value;
-//     // bool flag;
-//     char a;
-//     char b;
-//     char c;
-// } __attribute__((packed));      // ensure no padding
-
 typedef struct {
   long long packetID;
   int64_t microSecondsSinceBoot;
 } __attribute__((packed)) PacketHeader_t;
 
+// typedef struct {
+//   float testVal;
+//   char c;
+//   bool b;
+// } __attribute__((packed))  DataPacket;
+
 typedef struct {
-  float testVal;
-  char c;
-  bool b;
-} __attribute__((packed))  DataPacket;
+  // IMU estimates
+  float pitch_accel;
+  float pitch_gyro;
+  float pitch_est;
+
+  // wheel encoder measurements
+  // float motor1DistanceMeas;
+  uint motor1EncoderPulses;         // uint on this platform is long on esp32
+  uint motor1EncoderPulsesDelta;
+  // unsigned char motor1DirMeas;
+
+  // float motor2DistanceMeas;
+  uint motor2EncoderPulses;
+  uint motor2EncoderPulsesDelta;
+  // unsigned char motor2DirMeas;
+
+  // gyro angular velocity measurement
+  float pitch_velocity_gyro;
+
+} __attribute__((packed)) DataPacket; //StateEstimatePacket_t;
 
 
 int configureSerial(const char* port) {
@@ -101,7 +114,7 @@ void readSerial(int fd) {
                     std::memcpy(&header, &buffer[1], sizeof(PacketHeader_t));
                     std::memcpy(&data, &buffer[HEADER_LENGTH + 1], sizeof(DataPacket));
 
-                    std::cout << "Received valid message: " << header.packetID << ":" << data.testVal << ", " << data.b << ", " << data.c << std::endl;
+                    std::cout << "Received valid message: " << header.packetID << ":" << data.pitch_accel << ", " << data.motor1EncoderPulses << ", " << data.motor2EncoderPulses << std::endl;
                 } else {
                     std::cerr << "Invalid packet received" << std::endl;
                 }
