@@ -10,15 +10,17 @@ Plug the USB cable into the **right** USB slot on the ESP32-S3 WROOM Freenove bo
 
 In the terminal:
 
-```
+```bash
 tio /dev/ttyACM0
 ```
 Check that this is the correct comm port (see `platformio.ini`).
 
 `Ctrl+t q` to quit.
 
-Run the python script to communicate (currently from the conda base environment, but I should fix that):
+Run the script to read and siplay data from the ESP32:
 
-```
-python plot_serial.py
+```bash
+cd src
+g++ -std=c++2a -o read_serial read_serial.cpp
+./read_serial.cpp
 ```
