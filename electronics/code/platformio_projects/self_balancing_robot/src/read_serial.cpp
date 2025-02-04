@@ -26,13 +26,13 @@ typedef struct {
 
   // wheel encoder measurements
   // float motor1DistanceMeas;
-  uint motor1EncoderPulses;         // uint on this platform is long on esp32
-  uint motor1EncoderPulsesDelta;
+  int motor1EncoderPulses;         // uint on this platform is long on esp32
+  int motor1EncoderPulsesDelta;
   // unsigned char motor1DirMeas;
 
   // float motor2DistanceMeas;
-  uint motor2EncoderPulses;
-  uint motor2EncoderPulsesDelta;
+  int motor2EncoderPulses;
+  int motor2EncoderPulsesDelta;
   // unsigned char motor2DirMeas;
 
   // gyro angular velocity measurement
@@ -91,6 +91,10 @@ void readSerial(int fd) {
     char buffer[PACKET_LENGTH];  // We expect "!<header packet><data packet>@"
     int index = 0;
 
+    int64_t microSecondsSinceBootPrevious = 0;
+    int motor1PulsesPrevious = 0;
+    int motor2PulsesPrevious = 0;
+
     while (true) {
         char c;
         int n = read(fd, &c, 1);  // Read one byte
@@ -104,7 +108,6 @@ void readSerial(int fd) {
         }
         
         {
-
             buffer[index++] = c;
 
             if (index == PACKET_LENGTH) {
@@ -114,7 +117,18 @@ void readSerial(int fd) {
                     std::memcpy(&header, &buffer[1], sizeof(PacketHeader_t));
                     std::memcpy(&data, &buffer[HEADER_LENGTH + 1], sizeof(DataPacket));
 
-                    std::cout << "Received valid message: " << header.packetID << ":" << data.pitch_accel << ", " << data.motor1EncoderPulses << ", " << data.motor2EncoderPulses << std::endl;
+                    const float timeDeltaSec = (header.microSecondsSinceBoot - microSecondsSinceBootPrevious) / 1e6;
+                    const float motor1PulsesPerSec = 1.f * (data.motor1EncoderPulses - motor1PulsesPrevious) / timeDeltaSec;
+                    const float motor2PulsesPerSec = 1.f * (data.motor2EncoderPulses - motor2PulsesPrevious) / timeDeltaSec;
+
+                    std::cout << "Received message: " << header.packetID << ", " << header.microSecondsSinceBoot / 1000 << "ms (" << (1.f/timeDeltaSec) << "Hz):" << 
+                        data.pitch_accel << " deg, " << 
+                        data.motor1EncoderPulses << " pulses (" << motor1PulsesPerSec << " pulses/sec), " << 
+                        data.motor2EncoderPulses << " pulses (" << motor2PulsesPerSec << " pulses/sec), " << std::endl;
+                    
+                    microSecondsSinceBootPrevious = header.microSecondsSinceBoot;
+                    motor1PulsesPrevious = data.motor1EncoderPulses;
+                    motor2PulsesPrevious = data.motor2EncoderPulses;
                 } else {
                     std::cerr << "Invalid packet received" << std::endl;
                 }
