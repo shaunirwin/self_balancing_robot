@@ -28,8 +28,8 @@ const int PIN_MOTOR1_SLEEP = 42;
 const int PIN_MOTOR2_SLEEP = 41;
 const int PIN_MOTOR1_DIR = 40;
 const int PIN_MOTOR2_DIR = 39;
-const int PIN_ENCODER2A = 15;
-const int PIN_ENCODER2B = 16;
+const int PIN_ENCODER2A = 16;
+const int PIN_ENCODER2B = 15;
 const int PIN_ENCODER1A = 11;
 const int PIN_ENCODER1B = 12;
 const int PIN_MOTOR1_PWM = 35;
@@ -54,9 +54,9 @@ const char STX = '!'; //'\x002';   // start of frame
 const char ETX = '@'; //'\x003';   // end of frame
 
 // state estimation
-volatile long motor1EncoderPulses = 0;
+volatile signed long motor1EncoderPulses = 0;
 volatile int motor1DirMeas = 0;   // 0: stopped, 1: forward, -1: backward
-volatile long motor2EncoderPulses = 0;
+volatile signed long motor2EncoderPulses = 0;
 volatile int motor2DirMeas = 0;
 
 long long packetID = 0;
@@ -89,13 +89,13 @@ typedef struct {
 
   // wheel encoder measurements
   // float motor1DistanceMeas;
-  long motor1EncoderPulses;
-  long motor1EncoderPulsesDelta;
+  signed long motor1EncoderPulses;
+  signed long motor1EncoderPulsesDelta;
   // unsigned char motor1DirMeas;
 
   // float motor2DistanceMeas;
-  long motor2EncoderPulses;
-  long motor2EncoderPulsesDelta;
+  signed long motor2EncoderPulses;
+  signed long motor2EncoderPulsesDelta;
   // unsigned char motor2DirMeas;
 
   // gyro angular velocity measurement
@@ -416,11 +416,6 @@ void handleMotor1EncoderB() {
 
   // Update pulse count
   motor1EncoderPulses += motor1DirMeas;
-
-  if (motor1EncoderPulses % ENCODER_PULSES_PER_REVOLUTION == 0) {
-    ledStatus = !ledStatus;
-    digitalWrite(PIN_LED_PWM, ledStatus);
-  }
 }
 
 void handleMotor2EncoderA() {
@@ -864,10 +859,12 @@ void setup(){
   // Set encoder pins as inputs
   pinMode(PIN_ENCODER1A, INPUT);
   pinMode(PIN_ENCODER1B, INPUT);
+  pinMode(PIN_ENCODER2A, INPUT);
+  pinMode(PIN_ENCODER2B, INPUT);
   attachInterrupt(digitalPinToInterrupt(PIN_ENCODER1A), handleMotor1EncoderA, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER1B), handleMotor1EncoderB, CHANGE);
+  // attachInterrupt(digitalPinToInterrupt(PIN_ENCODER1B), handleMotor1EncoderB, CHANGE);   // use only half the possible pules for now, since angular resolution should be sufficient
   attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2A), handleMotor2EncoderA, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2B), handleMotor2EncoderB, CHANGE);
+  // attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2B), handleMotor2EncoderB, CHANGE);
 
   // PID constants
   pid.kp = 3.0;
