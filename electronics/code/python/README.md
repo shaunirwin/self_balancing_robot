@@ -16,6 +16,8 @@ This will do the following:
 
 ## Run the scripts
 
+**NB: this is deprecated! We now use the C++ script `read_serial.cpp`**
+
 Read data over serial:
 
 `uv run plot_serial.py`
