@@ -1,8 +1,10 @@
 #include <iostream>
+#include <iomanip>
 #include <fcntl.h>
 #include <unistd.h>
 #include <termios.h>
 #include <cstring>
+#include <cmath>
 
 #define SERIAL_PORT "/dev/ttyACM0"  // Adjust this to your serial device
 #define BAUDRATE B115200
@@ -19,9 +21,25 @@ typedef struct {
 // } __attribute__((packed))  DataPacket;
 
 typedef struct {
+  float ax;   // [m/s^2]
+  float az;   // [m/s^2]
+  float gy;   // [rad/s]
+
+  float gyroOffsetY;  // [rad/s]
+
+  // gyro angular velocity measurement
+  float pitchVelocityGyro;  // [rad/s]
+
+  bool isCalibrated;  // true if IMU values calibrated
+
+  float pitchAccel;  // [rad]
+  float pitchGyro;   // [rad]
+  float pitchEst;    // [rad]
+} __attribute__((packed)) PitchAngleCalcPacket_t;
+
+
+typedef struct {
   // IMU estimates
-  float pitch_accel;
-  float pitch_gyro;
   float pitch_est;
 
   // wheel encoder measurements
@@ -38,7 +56,12 @@ typedef struct {
   // gyro angular velocity measurement
   float pitch_velocity_gyro;
 
-} __attribute__((packed)) DataPacket; //StateEstimatePacket_t;
+} __attribute__((packed)) StateEstimatePacket_t;
+
+typedef struct {
+  PitchAngleCalcPacket_t pitchInfo;
+  StateEstimatePacket_t state;
+} __attribute__((packed)) DataPacket_t;
 
 
 int configureSerial(const char* port) {
@@ -86,7 +109,7 @@ int configureSerial(const char* port) {
 
 void readSerial(int fd) {
     const uint HEADER_LENGTH = sizeof(PacketHeader_t);
-    const uint DATA_LENGTH = sizeof(DataPacket);
+    const uint DATA_LENGTH = sizeof(DataPacket_t);
     const auto PACKET_LENGTH = HEADER_LENGTH + DATA_LENGTH + 2;
     char buffer[PACKET_LENGTH];  // We expect "!<header packet><data packet>@"
     int index = 0;
@@ -113,22 +136,28 @@ void readSerial(int fd) {
             if (index == PACKET_LENGTH) {
                 if (buffer[0] == '!' && buffer[PACKET_LENGTH-1] == '@') {
                     PacketHeader_t header;
-                    DataPacket data;
+                    DataPacket_t data;
+                    
                     std::memcpy(&header, &buffer[1], sizeof(PacketHeader_t));
-                    std::memcpy(&data, &buffer[HEADER_LENGTH + 1], sizeof(DataPacket));
+                    std::memcpy(&data, &buffer[HEADER_LENGTH + 1], sizeof(DataPacket_t));
 
                     const float timeDeltaSec = (header.microSecondsSinceBoot - microSecondsSinceBootPrevious) / 1e6;
-                    const float motor1PulsesPerSec = 1.f * (data.motor1EncoderPulses - motor1PulsesPrevious) / timeDeltaSec;
-                    const float motor2PulsesPerSec = 1.f * (data.motor2EncoderPulses - motor2PulsesPrevious) / timeDeltaSec;
+                    const float motor1PulsesPerSec = 1.f * (data.state.motor1EncoderPulses - motor1PulsesPrevious) / timeDeltaSec;
+                    const float motor2PulsesPerSec = 1.f * (data.state.motor2EncoderPulses - motor2PulsesPrevious) / timeDeltaSec;
 
-                    std::cout << "Received message: " << header.packetID << ", " << header.microSecondsSinceBoot / 1000 << "ms (" << (1.f/timeDeltaSec) << "Hz):" << 
-                        data.pitch_accel << " deg, " << 
-                        data.motor1EncoderPulses << " pulses (" << motor1PulsesPerSec << " pulses/sec), " << 
-                        data.motor2EncoderPulses << " pulses (" << motor2PulsesPerSec << " pulses/sec), " << std::endl;
+                    std::cout << "Received message: " << header.packetID << ", " << (int) (header.microSecondsSinceBoot / 1e6) << "sec (" << std::setprecision(3) << std::setfill('0') << (1.f/timeDeltaSec) << "Hz):" << 
+                        data.state.motor1EncoderPulses << " M1 pulses (" << std::round(motor1PulsesPerSec) << " pulses/sec), " << 
+                        data.state.motor2EncoderPulses << " M2 pulses (" << std::round(motor2PulsesPerSec) << " pulses/sec), " << 
+                        std::fixed  << std::internal <<  std::showpos << std::setw(6) << std::setprecision(2) << std::setfill(' ') <<
+                        "gy: " << data.pitchInfo.gy * 180. / M_PI << " deg/s, " << 
+                        "calib: " << data.pitchInfo.isCalibrated << ", " <<
+                        "gyOffset: " << data.pitchInfo.gyroOffsetY * 180. / M_PI << " deg/s, " << 
+                        "gyVel: " << data.pitchInfo.pitchVelocityGyro * 180. / M_PI << " deg/s, " << 
+                        std::endl;
                     
                     microSecondsSinceBootPrevious = header.microSecondsSinceBoot;
-                    motor1PulsesPrevious = data.motor1EncoderPulses;
-                    motor2PulsesPrevious = data.motor2EncoderPulses;
+                    motor1PulsesPrevious = data.state.motor1EncoderPulses;
+                    motor2PulsesPrevious = data.state.motor2EncoderPulses;
                 } else {
                     std::cerr << "Invalid packet received" << std::endl;
                 }

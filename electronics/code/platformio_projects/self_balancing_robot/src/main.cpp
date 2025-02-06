@@ -1,5 +1,7 @@
 #include <iostream>
 #include <string>
+#include <algorithm>
+#include <cstdint>
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -81,11 +83,27 @@ typedef struct {
     int16_t gz;
 } __attribute__((packed)) IMUPacket_t;
 
+// the following struct is used to show debugging info
+typedef struct {
+  float ax;   // [m/s^2]
+  float az;   // [m/s^2]
+  float gy;   // [rad/s]
+
+  float gyroOffsetY;  // [rad/s]
+
+  // gyro angular velocity measurement
+  float pitchVelocityGyro;  // [rad/s]
+
+  bool isCalibrated;  // true if IMU values calibrated
+
+  float pitchAccel;  // [rad]
+  float pitchGyro;   // [rad]
+  float pitchEst;    // [rad]
+} __attribute__((packed)) PitchAngleCalcPacket_t;
+
 typedef struct {
   // IMU estimates
-  float pitch_accel;
-  float pitch_gyro;
-  float pitch_est;
+  float pitch_est;    // [rad]
 
   // wheel encoder measurements
   // float motor1DistanceMeas;
@@ -231,7 +249,7 @@ void taskEstimateState(void * parameter) {
             // invert accelerometer readings to account for IMU mounted upside down
             const float ax = -imuPacket.ax * accel_resolution / 2;   // [m/s^2]
             const float az = -imuPacket.az * accel_resolution / 2;
-            const float gy = imuPacket.gy * gyro_resolution / 2;    // [deg/s]
+            const float gy = imuPacket.gy * gyro_resolution / 2  * PI / 180.;    // [rad/s]
 
             const float pitchAngleAccel = atan2(ax, az);            // [rad]
             
@@ -242,7 +260,7 @@ void taskEstimateState(void * parameter) {
                 gyroOffsetCalculated = true;
             }
 
-            const float pitchAngularRateGyro = (gy - gyroOffsetY) * PI / 180.;          // [rad/s]
+            const float pitchAngularRateGyro = gy - gyroOffsetY;          // [rad/s]
             const float deltaAngularRateGyro = -pitchAngularRateGyro / ESTIMATOR_FREQ;
 
             pitchAngleGyro += deltaAngularRateGyro;
@@ -262,8 +280,8 @@ void taskEstimateState(void * parameter) {
               wheel_velocity_estimator_step_count = WHEEL_VELOCITY_ESTIMATOR_TIME_STEPS;
             }
 
-            stateEstimatePacket.pitch_accel = pitchAngleAccel;
-            stateEstimatePacket.pitch_gyro = pitchAngleGyro;
+            // stateEstimatePacket.pitch_accel = pitchAngleAccel;
+            // stateEstimatePacket.pitch_gyro = pitchAngleGyro;
             stateEstimatePacket.pitch_est = pitchAngleEst;
             stateEstimatePacket.motor1EncoderPulses = motor1EncoderPulses;
             stateEstimatePacket.motor1EncoderPulsesDelta = motor1EncoderPulsesDelta;
@@ -281,8 +299,20 @@ void taskEstimateState(void * parameter) {
               packetHeader.packetID = packetID;
               packetHeader.microSecondsSinceBoot = esp_timer_get_time();
 
+              PitchAngleCalcPacket_t pitchAngleCalcPacket;
+              pitchAngleCalcPacket.ax = ax;
+              pitchAngleCalcPacket.az = az;
+              pitchAngleCalcPacket.gy = gy;
+              pitchAngleCalcPacket.gyroOffsetY = gyroOffsetY;
+              pitchAngleCalcPacket.pitchVelocityGyro = pitchAngularRateGyro;
+              pitchAngleCalcPacket.isCalibrated = gyroOffsetCalculated;
+              pitchAngleCalcPacket.pitchAccel = pitchAngleAccel;
+              pitchAngleCalcPacket.pitchGyro = pitchAngleGyro;
+              pitchAngleCalcPacket.pitchEst = pitchAngleEst;
+
               Serial.write(STX);
               Serial.write( (uint8_t *) &packetHeader, sizeof( packetHeader ) );
+              Serial.write( (uint8_t *) &pitchAngleCalcPacket, sizeof( pitchAngleCalcPacket ) );
               Serial.write( (uint8_t *) &stateEstimatePacket, sizeof( stateEstimatePacket ) );
               Serial.write(ETX);
 
