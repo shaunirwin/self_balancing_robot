@@ -175,7 +175,8 @@ void taskEstimateState(void * parameter) {
     bool gyroOffsetCalculated = false;
     uint numIMUCalibSamples = 0;
     const uint totalIMUCalibSamples = 600;
-    float gyroOffsetY = 0;                            // [deg/s]
+    float gyroOffsetY = 0;     
+    float pitchAccelOffset = 0;                      // [deg/s]
     long motor1EncoderPulsesLastUpdate = 0;       // pulses since last state estimator update
     long motor2EncoderPulsesLastUpdate = 0;
 
@@ -192,18 +193,21 @@ void taskEstimateState(void * parameter) {
         // Wait until data is available in the queue
         if (xQueueReceive(queueIMU, &imuPacket, portMAX_DELAY) == pdPASS) {
 
-            const float pitchAngleAccel = atan2(imuPacket.ax, imuPacket.az);            // [rad]
+            const float pitchAngleAccelRaw = atan2(imuPacket.ax, imuPacket.az);            // [rad]
             
             if (!gyroOffsetCalculated)
             {
                 // calculate mean iteratively over a period
                 numIMUCalibSamples ++;
                 gyroOffsetY = (imuPacket.gy + (numIMUCalibSamples - 1) * gyroOffsetY) / numIMUCalibSamples;
+                pitchAccelOffset = (pitchAngleAccelRaw + (numIMUCalibSamples - 1) * pitchAccelOffset) / numIMUCalibSamples;
 
                 if (numIMUCalibSamples == totalIMUCalibSamples) {
                   gyroOffsetCalculated = true;
                 }
             }
+
+            const float pitchAngleAccel = pitchAngleAccelRaw - pitchAccelOffset;
 
             const float pitchAngularRateGyro = imuPacket.gy - gyroOffsetY;          // [rad/s]
             const float deltaAngularRateGyro = -pitchAngularRateGyro / ESTIMATOR_FREQ;
@@ -248,6 +252,7 @@ void taskEstimateState(void * parameter) {
               pitchAngleCalcPacket.gyroOffsetY = gyroOffsetY;
               pitchAngleCalcPacket.pitchVelocityGyro = pitchAngularRateGyro;
               pitchAngleCalcPacket.isCalibrated = gyroOffsetCalculated;
+              pitchAngleCalcPacket.pitchAccelRaw = pitchAngleAccelRaw;
               pitchAngleCalcPacket.pitchAccel = pitchAngleAccel;
               pitchAngleCalcPacket.pitchGyro = pitchAngleGyro;
               pitchAngleCalcPacket.pitchEst = pitchAngleEst;

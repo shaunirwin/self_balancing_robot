@@ -102,12 +102,14 @@ void readSerial(int fd) {
                         std::fixed  << std::internal <<  std::showpos << std::setw(6) << std::setprecision(2) << std::setfill(' ') <<
                         "ax: " << data.imu.ax << " m/s^2, " << 
                         "az: " << data.imu.az << " m/s^2, " << 
-                        "gy: " << data.imu.gy * 180. / M_PI << " deg/s, " << 
+                        "gy calib: " << data.pitchInfo.pitchVelocityGyro * 180. / M_PI << " deg/s, " << 
                         "calib: " << data.pitchInfo.isCalibrated << ", " <<
                         "gyOffset: " << data.pitchInfo.gyroOffsetY * 180. / M_PI << " deg/s, " << 
                         "gyVel: " << data.pitchInfo.pitchVelocityGyro * 180. / M_PI << " deg/s, " << 
                         "pitch accel: " << data.pitchInfo.pitchAccel * 180. / M_PI << " deg, " << 
                         "temp: " << data.imu.temp << " deg C" <<
+                        "pitch gyro: " << data.pitchInfo.pitchGyro * 180. / M_PI << " deg, " << 
+                        "pitch est: " << data.pitchInfo.pitchEst * 180. / M_PI << " deg, " << 
                         std::endl;
                     
                     microSecondsSinceBootPrevious = header.microSecondsSinceBoot;

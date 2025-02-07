@@ -41,7 +41,8 @@ typedef struct {
 
   bool isCalibrated;  // true if IMU values calibrated
 
-  float pitchAccel;  // [rad]
+  float pitchAccelRaw; // [rad] - uncalibrated
+  float pitchAccel;  // [rad] - calibrated
   float pitchGyro;   // [rad]
   float pitchEst;    // [rad]
 } __attribute__((packed)) PitchAngleCalcPacket_t;
