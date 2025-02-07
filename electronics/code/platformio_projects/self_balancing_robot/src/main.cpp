@@ -229,6 +229,8 @@ void taskEstimateState(void * parameter) {
     IMUPacket_t imuPacket;
     StateEstimatePacket_t stateEstimatePacket;
     bool gyroOffsetCalculated = false;
+    uint numIMUCalibSamples = 0;
+    const uint totalIMUCalibSamples = 600;
     float gyroOffsetY = 0;                            // [deg/s]
     long motor1EncoderPulsesLastUpdate = 0;       // pulses since last state estimator update
     long motor2EncoderPulsesLastUpdate = 0;
@@ -255,9 +257,13 @@ void taskEstimateState(void * parameter) {
             
             if (!gyroOffsetCalculated)
             {
-                // TODO: calculate average over a period
-                gyroOffsetY = gy;
-                gyroOffsetCalculated = true;
+                // calculate mean iteratively over a period
+                numIMUCalibSamples ++;
+                gyroOffsetY = (gy + (numIMUCalibSamples - 1) * gyroOffsetY) / numIMUCalibSamples;
+
+                if (numIMUCalibSamples == totalIMUCalibSamples) {
+                  gyroOffsetCalculated = true;
+                }
             }
 
             const float pitchAngularRateGyro = gy - gyroOffsetY;          // [rad/s]
