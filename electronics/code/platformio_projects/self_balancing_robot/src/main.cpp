@@ -13,6 +13,8 @@
 #include "I2Cdev.h"
 #include "MPU6050.h"
 
+#include "data_structs.h"
+
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -63,74 +65,6 @@ volatile int motor2DirMeas = 0;
 
 long long packetID = 0;
 
-typedef struct {
-  float testVal;
-  char c;
-  bool b;
-} __attribute__((packed)) TestPacket_t;
-
-typedef struct {
-  long long packetID;
-  int64_t microSecondsSinceBoot;
-} __attribute__((packed)) PacketHeader_t;
-
-typedef struct {
-    int16_t ax;
-    int16_t ay;
-    int16_t az;
-    int16_t gx;
-    int16_t gy;
-    int16_t gz;
-} __attribute__((packed)) IMUPacket_t;
-
-// the following struct is used to show debugging info
-typedef struct {
-  float ax;   // [m/s^2]
-  float az;   // [m/s^2]
-  float gy;   // [rad/s]
-
-  float gyroOffsetY;  // [rad/s]
-
-  // gyro angular velocity measurement
-  float pitchVelocityGyro;  // [rad/s]
-
-  bool isCalibrated;  // true if IMU values calibrated
-
-  float pitchAccel;  // [rad]
-  float pitchGyro;   // [rad]
-  float pitchEst;    // [rad]
-} __attribute__((packed)) PitchAngleCalcPacket_t;
-
-typedef struct {
-  // IMU estimates
-  float pitch_est;    // [rad]
-
-  // wheel encoder measurements
-  // float motor1DistanceMeas;
-  signed long motor1EncoderPulses;
-  signed long motor1EncoderPulsesDelta;
-  // unsigned char motor1DirMeas;
-
-  // float motor2DistanceMeas;
-  signed long motor2EncoderPulses;
-  signed long motor2EncoderPulsesDelta;
-  // unsigned char motor2DirMeas;
-
-  // gyro angular velocity measurement
-  float pitch_velocity_gyro;
-
-} __attribute__((packed)) StateEstimatePacket_t;
-
-typedef struct {
-    float pitch_setpoint;
-    float pitch_current;
-    float pitch_error;
-
-    float motorSpeed;
-    int motorDir;
-    uint dutyCycle;
-
-} __attribute__((packed)) ControlPacket_t;
 
 float accel_resolution = 0;
 float gyro_resolution = 0;
@@ -316,10 +250,13 @@ void taskEstimateState(void * parameter) {
               pitchAngleCalcPacket.pitchGyro = pitchAngleGyro;
               pitchAngleCalcPacket.pitchEst = pitchAngleEst;
 
+              DataPacket_t dataPacket;
+              dataPacket.pitchInfo = pitchAngleCalcPacket;
+              dataPacket.state = stateEstimatePacket;
+
               Serial.write(STX);
               Serial.write( (uint8_t *) &packetHeader, sizeof( packetHeader ) );
-              Serial.write( (uint8_t *) &pitchAngleCalcPacket, sizeof( pitchAngleCalcPacket ) );
-              Serial.write( (uint8_t *) &stateEstimatePacket, sizeof( stateEstimatePacket ) );
+              Serial.write( (uint8_t *) &dataPacket, sizeof( dataPacket ) );
               Serial.write(ETX);
 
               txCount = 0;

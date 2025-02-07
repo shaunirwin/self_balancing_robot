@@ -6,64 +6,13 @@
 #include <cstring>
 #include <cmath>
 
+#include "data_structs.h"
+
 #define SERIAL_PORT "/dev/ttyACM0"  // Adjust this to your serial device
 #define BAUDRATE B115200
 
 const uint ENCODER_PULSES_PER_REVOLUTION = 700*2;   // detects rising and falling edge of each pulse
 
-typedef struct {
-  long long packetID;
-  int64_t microSecondsSinceBoot;
-} __attribute__((packed)) PacketHeader_t;
-
-// typedef struct {
-//   float testVal;
-//   char c;
-//   bool b;
-// } __attribute__((packed))  DataPacket;
-
-typedef struct {
-  float ax;   // [m/s^2]
-  float az;   // [m/s^2]
-  float gy;   // [rad/s]
-
-  float gyroOffsetY;  // [rad/s]
-
-  // gyro angular velocity measurement
-  float pitchVelocityGyro;  // [rad/s]
-
-  bool isCalibrated;  // true if IMU values calibrated
-
-  float pitchAccel;  // [rad]
-  float pitchGyro;   // [rad]
-  float pitchEst;    // [rad]
-} __attribute__((packed)) PitchAngleCalcPacket_t;
-
-
-typedef struct {
-  // IMU estimates
-  float pitch_est;
-
-  // wheel encoder measurements
-  // float motor1DistanceMeas;
-  int motor1EncoderPulses;         // uint on this platform is long on esp32
-  int motor1EncoderPulsesDelta;
-  // unsigned char motor1DirMeas;
-
-  // float motor2DistanceMeas;
-  int motor2EncoderPulses;
-  int motor2EncoderPulsesDelta;
-  // unsigned char motor2DirMeas;
-
-  // gyro angular velocity measurement
-  float pitch_velocity_gyro;
-
-} __attribute__((packed)) StateEstimatePacket_t;
-
-typedef struct {
-  PitchAngleCalcPacket_t pitchInfo;
-  StateEstimatePacket_t state;
-} __attribute__((packed)) DataPacket_t;
 
 
 int configureSerial(const char* port) {
