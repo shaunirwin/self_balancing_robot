@@ -47,7 +47,7 @@ const int PWM_RESOLUTION = 8;       // set PWM resolution
 const bool MOTOR_1_DIR_INVERT = false;
 const bool MOTOR_2_DIR_INVERT = true;
 const bool MOTOR_COAST = false;
-const uint ENCODER_PULSES_PER_REVOLUTION = 700;
+const uint ENCODER_PULSES_PER_REVOLUTION = 700*2;   // detects rising and falling edge of each pulse
 
 bool ledStatus = true;
 

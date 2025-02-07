@@ -9,6 +9,8 @@
 #define SERIAL_PORT "/dev/ttyACM0"  // Adjust this to your serial device
 #define BAUDRATE B115200
 
+const uint ENCODER_PULSES_PER_REVOLUTION = 700*2;   // detects rising and falling edge of each pulse
+
 typedef struct {
   long long packetID;
   int64_t microSecondsSinceBoot;
