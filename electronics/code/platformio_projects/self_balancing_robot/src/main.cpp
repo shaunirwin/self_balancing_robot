@@ -77,7 +77,7 @@ const float ALPHA = 0.98;             // gyro weight for complementary filter
 hw_timer_t *hwTimer = NULL;
 volatile SemaphoreHandle_t timerSemaphore;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
-QueueHandle_t queueIMURaw;  // queue of raw IMU measurements
+QueueHandle_t queueIMU;  // queue of IMU measurements
 QueueHandle_t queueStateEstimates;  // queue of state estimates
 
 enum MotorDirection { FORWARD, REVERSE }; 
@@ -149,10 +149,20 @@ void taskReadIMURawValues(void * parameter) {
     for(;;) {
         // Wait for the semaphore from the timer ISR
         if(xSemaphoreTake(timerSemaphore, portMAX_DELAY) == pdTRUE) {
-            IMUPacket_t imuPacket;
-            imu.getMotion6(&(imuPacket.ax), &(imuPacket.ay), &(imuPacket.az), &(imuPacket.gx), &(imuPacket.gy), &(imuPacket.gz));
+            IMURawPacket_t imuRawPacket;
+            imu.getMotion6(&(imuRawPacket.ax), &(imuRawPacket.ay), &(imuRawPacket.az), &(imuRawPacket.gx), &(imuRawPacket.gy), &(imuRawPacket.gz));
+            imuRawPacket.temp = imu.getTemperature();
 
-            if (xQueueSend(queueIMURaw, &imuPacket, portMAX_DELAY) != pdPASS) {
+            IMUPacket_t imuPacket;
+
+            // invert accelerometer readings to account for IMU mounted upside down
+            imuPacket.ax = -imuRawPacket.ax * accel_resolution / 2;   // [m/s^2]
+            imuPacket.az = -imuRawPacket.az * accel_resolution / 2;
+            imuPacket.gy = imuRawPacket.gy * gyro_resolution / 2  * PI / 180.;    // [rad/s]
+
+            imuPacket.temp = (float)(imuRawPacket.temp / 340.0 + 36.53);  // formula from datasheet
+
+            if (xQueueSend(queueIMU, &imuPacket, portMAX_DELAY) != pdPASS) {
                 Serial.println("Failed to send to IMU packet queue");
             }
         }
@@ -180,27 +190,22 @@ void taskEstimateState(void * parameter) {
 
     for (;;) {
         // Wait until data is available in the queue
-        if (xQueueReceive(queueIMURaw, &imuPacket, portMAX_DELAY) == pdPASS) {
+        if (xQueueReceive(queueIMU, &imuPacket, portMAX_DELAY) == pdPASS) {
 
-            // invert accelerometer readings to account for IMU mounted upside down
-            const float ax = -imuPacket.ax * accel_resolution / 2;   // [m/s^2]
-            const float az = -imuPacket.az * accel_resolution / 2;
-            const float gy = imuPacket.gy * gyro_resolution / 2  * PI / 180.;    // [rad/s]
-
-            const float pitchAngleAccel = atan2(ax, az);            // [rad]
+            const float pitchAngleAccel = atan2(imuPacket.ax, imuPacket.az);            // [rad]
             
             if (!gyroOffsetCalculated)
             {
                 // calculate mean iteratively over a period
                 numIMUCalibSamples ++;
-                gyroOffsetY = (gy + (numIMUCalibSamples - 1) * gyroOffsetY) / numIMUCalibSamples;
+                gyroOffsetY = (imuPacket.gy + (numIMUCalibSamples - 1) * gyroOffsetY) / numIMUCalibSamples;
 
                 if (numIMUCalibSamples == totalIMUCalibSamples) {
                   gyroOffsetCalculated = true;
                 }
             }
 
-            const float pitchAngularRateGyro = gy - gyroOffsetY;          // [rad/s]
+            const float pitchAngularRateGyro = imuPacket.gy - gyroOffsetY;          // [rad/s]
             const float deltaAngularRateGyro = -pitchAngularRateGyro / ESTIMATOR_FREQ;
 
             pitchAngleGyro += deltaAngularRateGyro;
@@ -240,9 +245,6 @@ void taskEstimateState(void * parameter) {
               packetHeader.microSecondsSinceBoot = esp_timer_get_time();
 
               PitchAngleCalcPacket_t pitchAngleCalcPacket;
-              pitchAngleCalcPacket.ax = ax;
-              pitchAngleCalcPacket.az = az;
-              pitchAngleCalcPacket.gy = gy;
               pitchAngleCalcPacket.gyroOffsetY = gyroOffsetY;
               pitchAngleCalcPacket.pitchVelocityGyro = pitchAngularRateGyro;
               pitchAngleCalcPacket.isCalibrated = gyroOffsetCalculated;
@@ -251,6 +253,7 @@ void taskEstimateState(void * parameter) {
               pitchAngleCalcPacket.pitchEst = pitchAngleEst;
 
               DataPacket_t dataPacket;
+              dataPacket.imu = imuPacket;
               dataPacket.pitchInfo = pitchAngleCalcPacket;
               dataPacket.state = stateEstimatePacket;
 

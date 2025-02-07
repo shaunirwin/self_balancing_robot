@@ -100,10 +100,14 @@ void readSerial(int fd) {
                         data.state.motor1EncoderPulses << " M1 pulses (" << std::round(motor1PulsesPerSec) << " pulses/sec), " << 
                         data.state.motor2EncoderPulses << " M2 pulses (" << std::round(motor2PulsesPerSec) << " pulses/sec), " << 
                         std::fixed  << std::internal <<  std::showpos << std::setw(6) << std::setprecision(2) << std::setfill(' ') <<
-                        "gy: " << data.pitchInfo.gy * 180. / M_PI << " deg/s, " << 
+                        "ax: " << data.imu.ax << " m/s^2, " << 
+                        "az: " << data.imu.az << " m/s^2, " << 
+                        "gy: " << data.imu.gy * 180. / M_PI << " deg/s, " << 
                         "calib: " << data.pitchInfo.isCalibrated << ", " <<
                         "gyOffset: " << data.pitchInfo.gyroOffsetY * 180. / M_PI << " deg/s, " << 
                         "gyVel: " << data.pitchInfo.pitchVelocityGyro * 180. / M_PI << " deg/s, " << 
+                        "pitch accel: " << data.pitchInfo.pitchAccel * 180. / M_PI << " deg, " << 
+                        "temp: " << data.imu.temp << " deg C" <<
                         std::endl;
                     
                     microSecondsSinceBootPrevious = header.microSecondsSinceBoot;

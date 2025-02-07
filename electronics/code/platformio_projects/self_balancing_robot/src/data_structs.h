@@ -4,19 +4,12 @@
 
 
 typedef struct {
-  float testVal;
-  char c;
-  bool b;
-} __attribute__((packed)) TestPacket_t;
-
-
-typedef struct {
   long long packetID;
 
   int64_t microSecondsSinceBoot;
 } __attribute__((packed)) PacketHeader_t;
 
-
+// raw IMU readings
 typedef struct {
     int16_t ax;
     int16_t ay;
@@ -24,15 +17,23 @@ typedef struct {
     int16_t gx;
     int16_t gy;
     int16_t gz;
+    int16_t temp;
+} __attribute__((packed)) IMURawPacket_t;
+
+// IMU readings converted into standard units
+typedef struct {
+    float ax;   // [m/s^2]
+    // float ay;
+    float az;
+    // float gx;   // [rad/s]
+    float gy;
+    // float gz;
+    float temp; // [deg C]
 } __attribute__((packed)) IMUPacket_t;
 
 
-// the following struct is used to show debugging info
+// debugging info for calculation of pitch angle
 typedef struct {
-  float ax;   // [m/s^2]
-  float az;   // [m/s^2]
-  float gy;   // [rad/s]
-
   float gyroOffsetY;  // [rad/s]
 
   // gyro angular velocity measurement
@@ -47,18 +48,17 @@ typedef struct {
 
 
 typedef struct {
-  // IMU estimates
-  float pitch_est;    // [rad]
+  float pitch_est;    // estimated pitch angle [rad]
 
   // wheel encoder measurements
   // float motor1DistanceMeas;
-  signed long motor1EncoderPulses;
-  signed long motor1EncoderPulsesDelta;
+  int32_t motor1EncoderPulses;
+  int32_t motor1EncoderPulsesDelta;
   // unsigned char motor1DirMeas;
 
   // float motor2DistanceMeas;
-  signed long motor2EncoderPulses;
-  signed long motor2EncoderPulsesDelta;
+  int32_t motor2EncoderPulses;
+  int32_t motor2EncoderPulsesDelta;
   // unsigned char motor2DirMeas;
 
   // gyro angular velocity measurement
@@ -72,7 +72,7 @@ typedef struct {
     float pitch_error;
 
     float motorSpeed;
-    int motorDir;
+    int8_t motorDir;      // TODO: use an enum?
     uint8_t dutyCycle;
 
 } __attribute__((packed)) ControlPacket_t;
@@ -80,6 +80,7 @@ typedef struct {
 
 
 typedef struct {
+  IMUPacket_t imu;
   PitchAngleCalcPacket_t pitchInfo;
   StateEstimatePacket_t state;
 } __attribute__((packed)) DataPacket_t;
