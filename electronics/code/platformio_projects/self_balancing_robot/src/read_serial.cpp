@@ -5,6 +5,8 @@
 #include <termios.h>
 #include <cstring>
 #include <cmath>
+#include <fstream>
+#include <vector>
 
 #include "data_structs.h"
 
@@ -12,6 +14,27 @@
 #define BAUDRATE B115200
 
 const uint ENCODER_PULSES_PER_REVOLUTION = 700*2;   // detects rising and falling edge of each pulse
+
+
+
+void writeCSVData(const std::string& csvPath, const std::vector<IMUPacket_t>& imuPackets) {
+    std::ofstream file(csvPath, std::ios::binary | std::ios::app);      // append mode
+    
+    if (!file) {
+        std::cerr << "Error opening file!" << std::endl;
+        return;
+    }
+
+    file.write(reinterpret_cast<const char*>(imuPackets.data()), imuPackets.size());
+
+    // for (const auto imuPacket : imuPackets) {
+    //     file << imuPacket;
+    //     .write( (uint8_t *) &imuPacket, sizeof( imuPacket ) );
+    // }
+
+    // file << "Time, Temperature\n";
+    // file << "10:05, 24.0\n";
+}
 
 
 
@@ -58,7 +81,8 @@ int configureSerial(const char* port) {
     return fd;
 }
 
-void readSerial(int fd) {
+void readSerial(int fd, bool logToCSV, std::string csvPath) {
+
     const uint HEADER_LENGTH = sizeof(PacketHeader_t);
     const uint DATA_LENGTH = sizeof(DataPacket_t);
     const auto PACKET_LENGTH = HEADER_LENGTH + DATA_LENGTH + 2;
@@ -69,6 +93,10 @@ void readSerial(int fd) {
     int64_t microSecondsSinceBootPrevious = 0;
     int motor1PulsesPrevious = 0;
     int motor2PulsesPrevious = 0;
+
+    // to be logged to CSV
+    const auto samplesPerLog = 1000;
+    std::vector<IMUPacket_t> imuPackets;
 
     while (true) {
         char c;
@@ -120,6 +148,15 @@ void readSerial(int fd) {
                     motor1PulsesPrevious = data.state.motor1EncoderPulses;
                     motor2PulsesPrevious = data.state.motor2EncoderPulses;
 
+                    if (logToCSV) {
+                        imuPackets.push_back(data.imu);
+
+                        if (imuPackets.size() == samplesPerLog) {
+                            writeCSVData(csvPath, imuPackets);
+                            imuPackets.clear();
+                        }
+                    }
+
                     packetsReceived ++;
                 } else {
                     std::cerr << "Invalid packet received" << std::endl;
@@ -130,13 +167,17 @@ void readSerial(int fd) {
     }
 }
 
+
 int main() {
     int serial_fd = configureSerial(SERIAL_PORT);
     if (serial_fd == -1) {
         return -1;  // Exit if the serial port cannot be opened
     }
 
-    readSerial(serial_fd);
+    bool logToCSV = true;
+    std::string csvPath { "imuData.log" };
+
+    readSerial(serial_fd, logToCSV, csvPath);
 
     close(serial_fd);
     return 0;
