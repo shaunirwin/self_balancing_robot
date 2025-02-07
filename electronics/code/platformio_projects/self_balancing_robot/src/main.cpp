@@ -187,7 +187,7 @@ void taskEstimateState(void * parameter) {
     long motor1EncoderPulsesDelta = 0;
     long motor2EncoderPulsesDelta = 0;
     uint txCount = 0;    // used for keeping track of frequency of transmitting over serial
-    const uint TX_PERIOD = 10;
+    const uint TX_PERIOD = 1; //10;
 
     for (;;) {
         // Wait until data is available in the queue
