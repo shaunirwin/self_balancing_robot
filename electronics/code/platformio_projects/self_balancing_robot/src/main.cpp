@@ -200,14 +200,14 @@ void stopLogging() {
 uint correctMotor2DutyCycle(const uint dutyCycle) {
   // correct motor 2's commanded duty cycle to ensure resultant speed is same as motor 1 when commanded to have the same duty cycle
 
-  const float m1 = 0.01676954f;   // slope motor 1 graph of speed as a function of duty cycle
-  const float b1 = -0.0466465f;   // intercept motor 1 graph of speed as a function of duty cycle
-  const float m2 = 0.01765459f;   // slope motor 2 graph of speed as a function of duty cycle
-  const float b2 = -0.09230133f;  // intercept motor 2 graph of speed as a function of duty cycle
+  const float m1 = 0.0014799539967724955f;   // slope motor 1 graph of speed as a function of duty cycle
+  const float b1 = -0.0036162999881075696f;   // intercept motor 1 graph of speed as a function of duty cycle
+  const float m2 = 0.0014670524848993663f;   // slope motor 2 graph of speed as a function of duty cycle
+  const float b2 = -0.004342195129313476f;  // intercept motor 2 graph of speed as a function of duty cycle
 
   const float dutyCycleCorrected = ((m1 * dutyCycle + b1) - b2) / m2;
 
-  return static_cast<uint>(dutyCycleCorrected);
+  return static_cast<uint8_t>(std::max(std::min(std::round(dutyCycleCorrected), 255.f), 0.f));
 }
 
 // Task to be executed periodically
@@ -427,10 +427,6 @@ void handleMotor1EncoderA() {
   // Update pulse count
   motor1EncoderPulses += motor1DirMeas;
 
-    if (motor1EncoderPulses % ENCODER_PULSES_PER_REVOLUTION == 0) {
-    ledStatus = !ledStatus;
-    digitalWrite(PIN_LED_PWM, ledStatus);
-  }
 }
 
 void handleMotor1EncoderB() {
