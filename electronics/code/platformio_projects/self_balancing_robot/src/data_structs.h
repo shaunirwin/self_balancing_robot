@@ -3,6 +3,18 @@
 #include <cstdint>
 
 
+const int ESTIMATOR_FREQ = 100; //250;        // frequency to run state estimator at [Hz]
+const float WHEEL_DIAMETER = 0.0618;  // [m]
+const uint ENCODER_PULSES_PER_REVOLUTION = 700*2;   // detects rising and falling edge of each pulse
+const float DISTANCE_PER_PULSE = PI * WHEEL_DIAMETER / ENCODER_PULSES_PER_REVOLUTION;
+
+// serial tx control characters
+const char STX = '!';   // start of frame
+const char ETX = '@';   // end of frame
+
+enum ControlMode { AUTO, MANUAL };    // choose whether control system controls the motors (AUTO) or user manually sets wheel movements (MANUAL)
+
+
 typedef struct {
   long long packetID;
 
@@ -77,6 +89,11 @@ typedef struct {
     float motorSpeed;
     int8_t motorDir;      // TODO: use an enum?
     uint8_t dutyCycle;
+
+    ControlMode controlMode;
+    uint8_t dutyCycle1;
+    uint8_t dutyCycle2;
+    uint8_t dutyCycle2Calibrated;
 
 } __attribute__((packed)) ControlPacket_t;
 

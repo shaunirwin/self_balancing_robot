@@ -13,13 +13,12 @@
 #define SERIAL_PORT "/dev/ttyACM0"  // Adjust this to your serial device
 #define BAUDRATE B115200
 
-const uint ENCODER_PULSES_PER_REVOLUTION = 700*2;   // detects rising and falling edge of each pulse
 
 
 
 template<typename T>
 void writeBinaryData(const std::string& csvPath, const std::vector<T>& logPackets) {
-    std::ofstream file(csvPath, std::ios::binary | std::ios::app);      // append mode
+    std::ofstream file(csvPath, std::ios::binary | std::ios::app);
     
     if (!file) {
         std::cerr << "Error opening file!" << std::endl;
@@ -98,7 +97,7 @@ void readSerial(int fd, bool logToCSV, std::string csvPath) {
             continue;
         }
         
-        if ((index == 0) && (c != '!')) {
+        if ((index == 0) && (c != STX)) {
             continue;
         }
         
@@ -106,7 +105,7 @@ void readSerial(int fd, bool logToCSV, std::string csvPath) {
             buffer[index++] = c;
 
             if (index == PACKET_LENGTH) {
-                if (buffer[0] == '!' && buffer[PACKET_LENGTH-1] == '@') {
+                if (buffer[0] == STX && buffer[PACKET_LENGTH-1] == ETX) {
                     PacketHeader_t header;
                     DataPacket_t data;
                     

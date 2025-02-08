@@ -49,13 +49,8 @@ const int PWM_RESOLUTION = 8;       // set PWM resolution
 const bool MOTOR_1_DIR_INVERT = false;
 const bool MOTOR_2_DIR_INVERT = true;
 const bool MOTOR_COAST = false;
-const uint ENCODER_PULSES_PER_REVOLUTION = 700*2;   // detects rising and falling edge of each pulse
 
 bool ledStatus = true;
-
-// serial tx control characters
-const char STX = '!'; //'\x002';   // start of frame
-const char ETX = '@'; //'\x003';   // end of frame
 
 // state estimation
 volatile signed long motor1EncoderPulses = 0;
@@ -72,7 +67,6 @@ float pitchAngleGyro = 0;             // [rad]
 float pitchAngleEst = 0;              // [rad]
 
 // hardware timer
-const int ESTIMATOR_FREQ = 100; //250;        // frequency to run state estimator at [Hz]
 const float ALPHA = 0.98;             // gyro weight for complementary filter
 hw_timer_t *hwTimer = NULL;
 volatile SemaphoreHandle_t timerSemaphore;
@@ -87,7 +81,6 @@ MotorDirection motor2DirManual { MotorDirection::FORWARD };
 uint dutyCycle1Manual {0};                // motor 1 duty cycle when in manual mode
 uint dutyCycle2Manual {0};
 
-enum ControlMode { AUTO, MANUAL };    // choose whether control system controls the motors (AUTO) or user manually sets wheel movements (MANUAL)
 ControlMode controlMode {AUTO};
 uint DUTY_CYCLE_MIN = 15;
 uint DUTY_CYCLE_MAX = 253;      // conservative for now. Can be as high as 255
@@ -180,8 +173,6 @@ void taskEstimateState(void * parameter) {
     long motor1EncoderPulsesLastUpdate = 0;       // pulses since last state estimator update
     long motor2EncoderPulsesLastUpdate = 0;
 
-    const float WHEEL_DIAMETER = 0.0618;  // [m]
-    const float DISTANCE_PER_PULSE = PI * WHEEL_DIAMETER / ENCODER_PULSES_PER_REVOLUTION;
     const uint WHEEL_VELOCITY_ESTIMATOR_TIME_STEPS = 25;  // number of time steps of the estimator period used to calculate wheel velocity over
     uint wheel_velocity_estimator_step_count = WHEEL_VELOCITY_ESTIMATOR_TIME_STEPS;   // keep track of how many steps since last velocity measurement taken
     long motor1EncoderPulsesDelta = 0;
@@ -347,6 +338,11 @@ void taskControlMotors(void * parameter) {
         dutyCycle1 = 0;
         dutyCycle2Calibrated = 0;
       }
+
+      controlPacket.controlMode = controlMode;
+      controlPacket.dutyCycle1 = dutyCycle1;
+      controlPacket.dutyCycle2 = dutyCycle2;
+      controlPacket.dutyCycle2Calibrated = dutyCycle2Calibrated;
 
       ledcWrite(MOTOR1_PWM_CHANNEL, dutyCycle1);
       ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle2Calibrated);
