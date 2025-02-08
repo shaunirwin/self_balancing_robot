@@ -89,13 +89,13 @@ uint dutyCycle2Manual {0};
 
 enum ControlMode { AUTO, MANUAL };    // choose whether control system controls the motors (AUTO) or user manually sets wheel movements (MANUAL)
 ControlMode controlMode {AUTO};
-uint DUTY_CYCLE_MIN = 35;
-uint DUTY_CYCLE_MAX = 255;      // conservative for now. Can be as high as 255
+uint DUTY_CYCLE_MIN = 15;
+uint DUTY_CYCLE_MAX = 253;      // conservative for now. Can be as high as 255
 float PITCH_ANGLE_ERROR_MAX = 25.f*PI/180.f;   // maximum pitch angle error before motors cut off
-float PITCH_ANGLE_ERROR_MIN = 0.5f*PI/180.f;   // minimumpitch angle error before motors cut off
+float PITCH_ANGLE_ERROR_MIN = 0.2f*PI/180.f;   // minimumpitch angle error before motors cut off
 
 // PID variables
-float pitch_angle_setpoint = -3.7*PI/180;  // desired pitch angle [rad]
+float pitch_angle_setpoint = 0; //-3.7*PI/180;  // desired pitch angle [rad]
 float pitch_angle_current = 0;        // current pitch angle [rad]
 
 // for logging data and sending to base station afterwards
