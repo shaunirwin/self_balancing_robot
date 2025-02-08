@@ -17,7 +17,8 @@ const uint ENCODER_PULSES_PER_REVOLUTION = 700*2;   // detects rising and fallin
 
 
 
-void writeCSVData(const std::string& csvPath, const std::vector<IMUPacket_t>& imuPackets) {
+template<typename T>
+void writeBinaryData(const std::string& csvPath, const std::vector<T>& logPackets) {
     std::ofstream file(csvPath, std::ios::binary | std::ios::app);      // append mode
     
     if (!file) {
@@ -25,17 +26,8 @@ void writeCSVData(const std::string& csvPath, const std::vector<IMUPacket_t>& im
         return;
     }
 
-    file.write(reinterpret_cast<const char*>(imuPackets.data()), imuPackets.size());
-
-    // for (const auto imuPacket : imuPackets) {
-    //     file << imuPacket;
-    //     .write( (uint8_t *) &imuPacket, sizeof( imuPacket ) );
-    // }
-
-    // file << "Time, Temperature\n";
-    // file << "10:05, 24.0\n";
+    file.write(reinterpret_cast<const char*>(logPackets.data()), logPackets.size());
 }
-
 
 
 int configureSerial(const char* port) {
@@ -152,7 +144,7 @@ void readSerial(int fd, bool logToCSV, std::string csvPath) {
                         imuPackets.push_back(data.imu);
 
                         if (imuPackets.size() == samplesPerLog) {
-                            writeCSVData(csvPath, imuPackets);
+                            writeBinaryData(csvPath, imuPackets);
                             imuPackets.clear();
                         }
                     }
