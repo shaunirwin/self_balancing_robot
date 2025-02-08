@@ -15,6 +15,33 @@
 
 
 
+typedef struct {
+    long long packetID;
+
+    int64_t microSecondsSinceBoot;
+
+    float pitch_est;    // estimated pitch angle [rad]
+
+    float motor1EncoderPulsesPerSec;
+    float motor2EncoderPulsesPerSec;
+
+    uint8_t dutyCycle1;
+    uint8_t dutyCycle2;
+
+    std::string toCSVRow() const {
+      std::stringstream csvRow;
+      csvRow << packetID << microSecondsSinceBoot << std::fixed << std::setprecision(3) << pitch_est << "," << 
+        motor1EncoderPulsesPerSec << "," << motor2EncoderPulsesPerSec << "," << dutyCycle1 << "," << dutyCycle2 << "\n";
+      return csvRow.str();
+    }
+
+    std::string getCSVHeader() const {
+      std::string csvHeader{ "packetID,timeUs,pitch_est,motor1EncoderPulsesPerSec,motor2EncoderPulsesPerSec,dutyCycle1,dutyCycle2\n" };
+      return csvHeader;
+    }
+
+} __attribute__((packed)) CSVRow_t;
+
 
 template<typename T>
 void writeBinaryData(const std::string& csvPath, const std::vector<T>& logPackets) {
@@ -27,6 +54,21 @@ void writeBinaryData(const std::string& csvPath, const std::vector<T>& logPacket
 
     file.write(reinterpret_cast<const char*>(logPackets.data()), logPackets.size());
 }
+
+
+void writeCSVRows(const std::string& csvPath, const std::vector<CSVRow_t>& csvRows) {
+    std::ofstream file(csvPath, std::ios::app);      // append mode
+    
+    if (!file) {
+        std::cerr << "Error opening file!" << std::endl;
+        return;
+    }
+
+    for (const auto csvRow : csvRows) {
+        file << csvRow.toCSVRow();
+    }
+}
+
 
 
 int configureSerial(const char* port) {
@@ -88,6 +130,7 @@ void readSerial(int fd, bool logToCSV, std::string csvPath) {
     // to be logged to CSV
     const auto samplesPerLog = 1000;
     std::vector<IMUPacket_t> imuPackets;
+    std::vector<CSVRow_t> csvRows;
 
     while (true) {
         char c;
@@ -140,12 +183,24 @@ void readSerial(int fd, bool logToCSV, std::string csvPath) {
                     motor2PulsesPrevious = data.state.motor2EncoderPulses;
 
                     if (logToCSV) {
-                        imuPackets.push_back(data.imu);
+                        CSVRow_t csvRow {
+                            .packetID = header.packetID,
+                            .microSecondsSinceBoot = header.microSecondsSinceBoot,
+                            .pitch_est = data.state.pitch_est,
+                            .motor1EncoderPulsesPerSec = motor1PulsesPerSec,
+                            .motor2EncoderPulsesPerSec = motor2PulsesPerSec,
+                            .dutyCycle1 = data.control.motorOutput.dutyCycle1,
+                            .dutyCycle2 = data.control.motorOutput.dutyCycle2,
+                        };
+
+                        csvRows.push_back(csvRow);
 
                         if (imuPackets.size() == samplesPerLog) {
-                            writeBinaryData(csvPath, imuPackets);
-                            imuPackets.clear();
+                            writeCSVRows(csvPath, csvRows);
+                            csvRows.clear();
                         }
+
+                        
                     }
 
                     packetsReceived ++;
@@ -166,7 +221,7 @@ int main() {
     }
 
     bool logToCSV = true;
-    std::string csvPath { "imuData.log" };
+    std::string csvPath { "motorSpinUp.csv" };
 
     readSerial(serial_fd, logToCSV, csvPath);
 
