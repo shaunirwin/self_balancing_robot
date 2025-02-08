@@ -2,11 +2,12 @@
 
 #include <cstdint>
 
+#include <cmath>
 
 const int ESTIMATOR_FREQ = 100; //250;        // frequency to run state estimator at [Hz]
 const float WHEEL_DIAMETER = 0.0618;  // [m]
 const uint ENCODER_PULSES_PER_REVOLUTION = 700*2;   // detects rising and falling edge of each pulse
-const float DISTANCE_PER_PULSE = PI * WHEEL_DIAMETER / ENCODER_PULSES_PER_REVOLUTION;
+const float DISTANCE_PER_PULSE = M_PI * WHEEL_DIAMETER / ENCODER_PULSES_PER_REVOLUTION; 
 
 // serial tx control characters
 const char STX = '!';   // start of frame
