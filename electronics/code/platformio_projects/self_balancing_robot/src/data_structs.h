@@ -65,6 +65,8 @@ typedef struct {
   // gyro angular velocity measurement
   float pitch_velocity_gyro;
 
+  bool estimatesValid;  // true if state estimates are valid
+
 } __attribute__((packed)) StateEstimatePacket_t;
 
 typedef struct {

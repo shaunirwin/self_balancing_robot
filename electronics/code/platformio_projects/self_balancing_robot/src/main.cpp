@@ -241,6 +241,7 @@ void taskEstimateState(void * parameter) {
             // stateEstimatePacket.motor2DistanceMeas = motor2EncoderPulses * DISTANCE_PER_PULSE;
             // stateEstimatePacket.motor2DirMeas = static_cast<signed char>(motor2DirMeas);
             stateEstimatePacket.pitch_velocity_gyro = deltaAngularRateGyro;   // TODO: should it be -pitchAngularRateGyro instead?
+            stateEstimatePacket.estimatesValid = gyroOffsetCalculated;  // valid once IMU readings calibrated
             
             txCount ++;
             if (txCount == TX_PERIOD) {
@@ -341,6 +342,11 @@ void taskControlMotors(void * parameter) {
 
       // correct motor2's duty cycle to ensure motors spin at same speed when same duty cycle commanded
       uint dutyCycle2Calibrated = correctMotor2DutyCycle(dutyCycle2);
+
+      if (!stateEstimatePacket.estimatesValid) {
+        dutyCycle1 = 0;
+        dutyCycle2Calibrated = 0;
+      }
 
       ledcWrite(MOTOR1_PWM_CHANNEL, dutyCycle1);
       ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle2Calibrated);
@@ -791,8 +797,8 @@ void setup(){
   // Create the semaphore
   timerSemaphore = xSemaphoreCreateBinary();
 
-  queueIMURaw = xQueueCreate(10, sizeof(IMUPacket_t));
-  if (queueIMURaw == NULL) {
+  queueIMU = xQueueCreate(10, sizeof(IMUPacket_t));
+  if (queueIMU == NULL) {
       Serial.println("Failed to create queue");
       while (1);
   }
