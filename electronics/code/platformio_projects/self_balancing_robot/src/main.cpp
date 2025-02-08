@@ -74,7 +74,6 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 QueueHandle_t queueIMU;  // queue of IMU measurements
 QueueHandle_t queueStateEstimates;  // queue of state estimates
 
-enum MotorDirection { FORWARD, REVERSE }; 
 MotorDirection dirDrive { MotorDirection::FORWARD };
 MotorDirection motor1DirManual { MotorDirection::FORWARD }; // motor 1 direction when in manual mode
 MotorDirection motor2DirManual { MotorDirection::FORWARD };
@@ -291,12 +290,12 @@ void taskControlMotors(void * parameter) {
       const bool disable_motors = pitch_error_exceeded || pitch_error_small || motor_power_too_low;
       const uint dutyCycleAuto = disable_motors ? 0 : static_cast<uint>(static_cast<float>(DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * abs(motorPerc) + static_cast<float>(DUTY_CYCLE_MIN));
 
-      controlPacket.pitch_setpoint = pitch_angle_setpoint;
-      controlPacket.pitch_current = pitch_angle_current;
-      controlPacket.pitch_error = pitch_angle_current - pitch_angle_setpoint;
-      controlPacket.motorSpeed = motorPerc;
-      controlPacket.motorDir = static_cast<int>(motorDirAuto);
-      controlPacket.dutyCycle = dutyCycleAuto;
+      controlPacket.pid.pitch_setpoint = pitch_angle_setpoint;
+      controlPacket.pid.pitch_current = pitch_angle_current;
+      controlPacket.pid.pitch_error = pitch_angle_current - pitch_angle_setpoint;
+      controlPacket.pid.motorSpeed = motorPerc;
+      controlPacket.pid.motorDir = static_cast<int>(motorDirAuto);
+      controlPacket.pid.dutyCycle = dutyCycleAuto;
 
       // Serial.write(STX);
       // Serial.write( (uint8_t *) &packetID, sizeof( packetID ));
@@ -340,14 +339,16 @@ void taskControlMotors(void * parameter) {
       }
 
       controlPacket.controlMode = controlMode;
-      controlPacket.dutyCycle1 = dutyCycle1;
-      controlPacket.dutyCycle2 = dutyCycle2;
-      controlPacket.dutyCycle2Calibrated = dutyCycle2Calibrated;
+      controlPacket.motorOutput.dutyCycle1 = dutyCycle1;
+      controlPacket.motorOutput.dutyCycle2 = dutyCycle2;
+      controlPacket.motorOutput.dutyCycle2Calibrated = dutyCycle2Calibrated;
+      controlPacket.motorOutput.motor1dir = motor1dirActual;
+      controlPacket.motorOutput.motor2dir = motor2dirActual;
 
-      ledcWrite(MOTOR1_PWM_CHANNEL, dutyCycle1);
-      ledcWrite(MOTOR2_PWM_CHANNEL, dutyCycle2Calibrated);
-      digitalWrite(PIN_MOTOR1_DIR, motor1dirActual);
-      digitalWrite(PIN_MOTOR2_DIR, motor2dirActual);
+      ledcWrite(MOTOR1_PWM_CHANNEL, controlPacket.motorOutput.dutyCycle1);
+      ledcWrite(MOTOR2_PWM_CHANNEL, controlPacket.motorOutput.dutyCycle2Calibrated);
+      digitalWrite(PIN_MOTOR1_DIR, controlPacket.motorOutput.motor1dir);
+      digitalWrite(PIN_MOTOR2_DIR, controlPacket.motorOutput.motor2dir);
 
       // log data to RAM
       if (enableLogging) {

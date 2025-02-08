@@ -14,6 +14,7 @@ const char STX = '!';   // start of frame
 const char ETX = '@';   // end of frame
 
 enum ControlMode { AUTO, MANUAL };    // choose whether control system controls the motors (AUTO) or user manually sets wheel movements (MANUAL)
+enum MotorDirection { FORWARD, REVERSE }; 
 
 
 typedef struct {
@@ -83,18 +84,42 @@ typedef struct {
 } __attribute__((packed)) StateEstimatePacket_t;
 
 typedef struct {
-    float pitch_setpoint;
-    float pitch_current;
-    float pitch_error;
+  float pitch_setpoint;
+  float pitch_current;
+  float pitch_error;
 
-    float motorSpeed;
-    int8_t motorDir;      // TODO: use an enum?
-    uint8_t dutyCycle;
+  float motorSpeed;
+  int8_t motorDir;      // TODO: use an enum?
+  uint8_t dutyCycle;
 
-    ControlMode controlMode;
-    uint8_t dutyCycle1;
-    uint8_t dutyCycle2;
-    uint8_t dutyCycle2Calibrated;
+} __attribute__((packed)) PIDControlPacket_t;
+
+
+typedef struct {
+  uint dutyCycle1;
+  uint dutyCycle2;
+  MotorDirection motor1dir;
+  MotorDirection motor2dir;
+
+} __attribute__((packed)) ManualControlPacket_t;
+
+
+typedef struct {
+  uint8_t dutyCycle1;
+  uint8_t dutyCycle2;
+  uint8_t dutyCycle2Calibrated;
+
+  bool motor1dir;
+  bool motor2dir;
+
+} __attribute__((packed)) MotorOutput_t;
+
+
+typedef struct {
+  PIDControlPacket_t pid;
+  ManualControlPacket_t manual;
+  ControlMode controlMode;
+  MotorOutput_t motorOutput;
 
 } __attribute__((packed)) ControlPacket_t;
 
