@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-
 #include <cmath>
 
 const int ESTIMATOR_FREQ = 100; //250;        // frequency to run state estimator at [Hz]
@@ -89,7 +88,7 @@ typedef struct {
   float pitch_error;
 
   float motorSpeed;
-  int8_t motorDir;      // TODO: use an enum?
+  MotorDirection motorDir;
   uint8_t dutyCycle;
 
 } __attribute__((packed)) PIDControlPacket_t;

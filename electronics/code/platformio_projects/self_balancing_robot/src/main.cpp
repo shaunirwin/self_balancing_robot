@@ -269,6 +269,69 @@ void taskEstimateState(void * parameter) {
     }
 }
 
+PIDControlPacket_t calcPID(const float pitch_angle_current, const float pitch_velocity_gyro) {
+
+  // Compute the PID output
+  pid.calculate(pitch_angle_setpoint, pitch_angle_current, pitch_velocity_gyro);
+
+  const float motorPerc = pid.Output;
+  const MotorDirection motorDir = motorPerc < 0 ? MotorDirection::FORWARD : MotorDirection::REVERSE;
+
+  const bool pitch_error_exceeded = abs(pitch_angle_current - pitch_angle_setpoint) >= PITCH_ANGLE_ERROR_MAX;
+  const bool pitch_error_small = abs(pitch_angle_current - pitch_angle_setpoint) <= PITCH_ANGLE_ERROR_MIN;
+  const bool motor_power_too_low = abs(motorPerc) < 0.05;
+  const bool disable_motors = pitch_error_exceeded || pitch_error_small || motor_power_too_low;
+  const uint dutyCycle = disable_motors ? 0 : static_cast<uint>(static_cast<float>(DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * abs(motorPerc) + static_cast<float>(DUTY_CYCLE_MIN));
+
+  PIDControlPacket_t pidPacket {
+    .pitch_setpoint = pitch_angle_setpoint,
+    .pitch_current = pitch_angle_current,
+    .pitch_error = pitch_angle_current - pitch_angle_setpoint,
+    .motorSpeed = motorPerc,
+    .motorDir = motorDir,
+    .dutyCycle = dutyCycle
+  };
+
+  return pidPacket;
+}
+
+
+MotorOutput_t calcMotorOutput(const MotorDirection motor1dir, 
+                              const MotorDirection motor2dir,
+                              uint dutyCycle1,
+                              uint dutyCycle2,
+                              const bool estimatesValid) {
+  // receive the motor commands and format them to the physical motors
+
+  // invert direction to specific motors in case wires are switched
+  bool motor1dirActual = motor1dir == MotorDirection::FORWARD;
+  bool motor2dirActual = motor2dir == MotorDirection::FORWARD;
+  if (MOTOR_1_DIR_INVERT) {
+    motor1dirActual = !motor1dirActual;
+  }
+  if (MOTOR_2_DIR_INVERT) {
+    motor2dirActual = !motor2dirActual;
+  }
+
+  // correct motor2's duty cycle to ensure motors spin at same speed when same duty cycle commanded
+  uint dutyCycle2Calibrated = correctMotor2DutyCycle(dutyCycle2);   // TODO: check that this is applied to correct motor
+
+  if (!estimatesValid) {
+    dutyCycle1 = 0;
+    dutyCycle2Calibrated = 0;
+  }
+
+  MotorOutput_t motorOutput {
+    .dutyCycle1 = dutyCycle1,
+    .dutyCycle2 = dutyCycle2,
+    .dutyCycle2Calibrated = dutyCycle2Calibrated,
+    .motor1dir = motor1dirActual,
+    .motor2dir = motor2dirActual
+  };
+
+  return motorOutput;
+}
+
 void taskControlMotors(void * parameter) {
   StateEstimatePacket_t stateEstimatePacket;
   ControlPacket_t controlPacket;
@@ -276,37 +339,8 @@ void taskControlMotors(void * parameter) {
   for (;;) {
     // Wait until data is available in the queue
     if (xQueueReceive(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) == pdPASS) {
-      pitch_angle_current = stateEstimatePacket.pitch_est;
 
-      // Compute the PID output
-      pid.calculate(pitch_angle_setpoint, pitch_angle_current, stateEstimatePacket.pitch_velocity_gyro);
-
-      const float motorPerc = pid.Output;
-      const MotorDirection motorDirAuto = motorPerc < 0 ? MotorDirection::FORWARD : MotorDirection::REVERSE;
-
-      const bool pitch_error_exceeded = abs(pitch_angle_current - pitch_angle_setpoint) >= PITCH_ANGLE_ERROR_MAX;
-      const bool pitch_error_small = abs(pitch_angle_current - pitch_angle_setpoint) <= PITCH_ANGLE_ERROR_MIN;
-      const bool motor_power_too_low = abs(motorPerc) < 0.05;
-      const bool disable_motors = pitch_error_exceeded || pitch_error_small || motor_power_too_low;
-      const uint dutyCycleAuto = disable_motors ? 0 : static_cast<uint>(static_cast<float>(DUTY_CYCLE_MAX - DUTY_CYCLE_MIN) * abs(motorPerc) + static_cast<float>(DUTY_CYCLE_MIN));
-
-      controlPacket.pid.pitch_setpoint = pitch_angle_setpoint;
-      controlPacket.pid.pitch_current = pitch_angle_current;
-      controlPacket.pid.pitch_error = pitch_angle_current - pitch_angle_setpoint;
-      controlPacket.pid.motorSpeed = motorPerc;
-      controlPacket.pid.motorDir = static_cast<int>(motorDirAuto);
-      controlPacket.pid.dutyCycle = dutyCycleAuto;
-
-      // Serial.write(STX);
-      // Serial.write( (uint8_t *) &packetID, sizeof( packetID ));
-      // Serial.write( (uint8_t *) &microSecondsSinceBoot, sizeof( microSecondsSinceBoot ));
-      // Serial.write( (uint8_t *) &controlPacket, sizeof( controlPacket ) );
-      // Serial.write(ETX);
-      // packetID += 1;
-
-      // adjust the PWM to each motor independently to ensure speed is equal
-      const uint dutyCycle1Auto = dutyCycleAuto; // + dutyCycleDiff;
-      const uint dutyCycle2Auto = dutyCycleAuto; // - dutyCycleDiff;
+      controlPacket.pid = calcPID(stateEstimatePacket.pitch_est, stateEstimatePacket.pitch_velocity_gyro);
 
       uint dutyCycle1 = dutyCycle1Manual;
       uint dutyCycle2 = dutyCycle2Manual;
@@ -314,37 +348,16 @@ void taskControlMotors(void * parameter) {
       MotorDirection motor2dir = motor2DirManual;
 
       if (controlMode == ControlMode::AUTO) {
-        dutyCycle1 = dutyCycle1Auto;
-        dutyCycle2 = dutyCycle2Auto;
-        motor1dir = motorDirAuto;
-        motor2dir = motorDirAuto;
-      }
-
-      // invert direction to specific motors in case wires are switched
-      bool motor1dirActual = motor1dir == MotorDirection::FORWARD;
-      bool motor2dirActual = motor2dir == MotorDirection::FORWARD;
-      if (MOTOR_1_DIR_INVERT) {
-        motor1dirActual = !motor1dirActual;
-      }
-      if (MOTOR_2_DIR_INVERT) {
-        motor2dirActual = !motor2dirActual;
-      }
-
-      // correct motor2's duty cycle to ensure motors spin at same speed when same duty cycle commanded
-      uint dutyCycle2Calibrated = correctMotor2DutyCycle(dutyCycle2);
-
-      if (!stateEstimatePacket.estimatesValid) {
-        dutyCycle1 = 0;
-        dutyCycle2Calibrated = 0;
+        dutyCycle1 = controlPacket.pid.dutyCycle;
+        dutyCycle2 = controlPacket.pid.dutyCycle;
+        motor1dir = controlPacket.pid.motorDir;
+        motor2dir = controlPacket.pid.motorDir;
       }
 
       controlPacket.controlMode = controlMode;
-      controlPacket.motorOutput.dutyCycle1 = dutyCycle1;
-      controlPacket.motorOutput.dutyCycle2 = dutyCycle2;
-      controlPacket.motorOutput.dutyCycle2Calibrated = dutyCycle2Calibrated;
-      controlPacket.motorOutput.motor1dir = motor1dirActual;
-      controlPacket.motorOutput.motor2dir = motor2dirActual;
 
+      controlPacket.motorOutput = 
+        calcMotorOutput(motor1dir, motor2dir, dutyCycle1, dutyCycle2, stateEstimatePacket.estimatesValid);
       ledcWrite(MOTOR1_PWM_CHANNEL, controlPacket.motorOutput.dutyCycle1);
       ledcWrite(MOTOR2_PWM_CHANNEL, controlPacket.motorOutput.dutyCycle2Calibrated);
       digitalWrite(PIN_MOTOR1_DIR, controlPacket.motorOutput.motor1dir);
