@@ -30,17 +30,18 @@ typedef struct {
 
     std::string toCSVRow() const {
       std::stringstream csvRow;
-      csvRow << packetID << microSecondsSinceBoot << std::fixed << std::setprecision(3) << pitch_est << "," << 
-        motor1EncoderPulsesPerSec << "," << motor2EncoderPulsesPerSec << "," << dutyCycle1 << "," << dutyCycle2 << "\n";
+      csvRow << packetID << "," << microSecondsSinceBoot / 1000 << std::fixed << std::setprecision(3) << "," << 
+        pitch_est * 180./M_PI << "," << motor1EncoderPulsesPerSec << "," << motor2EncoderPulsesPerSec << "," << 
+        static_cast<int>(dutyCycle1) << "," << static_cast<int>(dutyCycle2) << "\n";
       return csvRow.str();
     }
 
     std::string getCSVHeader() const {
-      std::string csvHeader{ "packetID,timeUs,pitch_est,motor1EncoderPulsesPerSec,motor2EncoderPulsesPerSec,dutyCycle1,dutyCycle2\n" };
+      std::string csvHeader{ "packetID,timeUs,pitch_est deg,motor1EncoderPulsesPerSec,motor2EncoderPulsesPerSec,dutyCycle1,dutyCycle2\n" };
       return csvHeader;
     }
 
-} __attribute__((packed)) CSVRow_t;
+} CSVRow_t;
 
 
 template<typename T>
@@ -53,6 +54,18 @@ void writeBinaryData(const std::string& csvPath, const std::vector<T>& logPacket
     }
 
     file.write(reinterpret_cast<const char*>(logPackets.data()), logPackets.size());
+}
+
+
+void writeCSVHeader(const std::string& csvPath, const std::vector<CSVRow_t>& csvRows) {
+    std::ofstream file(csvPath);
+    
+    if (!file) {
+        std::cerr << "Error opening file!" << std::endl;
+        return;
+    }
+
+    file << csvRows[0].getCSVHeader();
 }
 
 
@@ -128,7 +141,7 @@ void readSerial(int fd, bool logToCSV, std::string csvPath) {
     int motor2PulsesPrevious = 0;
 
     // to be logged to CSV
-    const auto samplesPerLog = 1000;
+    const auto samplesPerLog = 500;
     std::vector<IMUPacket_t> imuPackets;
     std::vector<CSVRow_t> csvRows;
 
@@ -195,12 +208,15 @@ void readSerial(int fd, bool logToCSV, std::string csvPath) {
 
                         csvRows.push_back(csvRow);
 
-                        if (imuPackets.size() == samplesPerLog) {
-                            writeCSVRows(csvPath, csvRows);
-                            csvRows.clear();
+                        if (packetsReceived == 0) {
+                            writeCSVHeader(csvPath, csvRows);
                         }
 
-                        
+                        if (csvRows.size() == samplesPerLog) {
+                            writeCSVRows(csvPath, csvRows);
+                            csvRows.clear();
+                            std::cout << "logging to csv..." << std::endl;
+                        }
                     }
 
                     packetsReceived ++;
