@@ -340,14 +340,14 @@ void taskControlMotors(void * parameter) {
     // Wait until data is available in the queue
     if (xQueueReceive(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) == pdPASS) {
 
-      controlPacket.pid = calcPID(stateEstimatePacket.pitch_est, stateEstimatePacket.pitch_velocity_gyro);
-
       uint dutyCycle1 = dutyCycle1Manual;
       uint dutyCycle2 = dutyCycle2Manual;
       MotorDirection motor1dir = motor1DirManual;
       MotorDirection motor2dir = motor2DirManual;
 
       if (controlMode == ControlMode::AUTO) {
+        controlPacket.pid = calcPID(stateEstimatePacket.pitch_est, stateEstimatePacket.pitch_velocity_gyro);
+
         dutyCycle1 = controlPacket.pid.dutyCycle;
         dutyCycle2 = controlPacket.pid.dutyCycle;
         motor1dir = controlPacket.pid.motorDir;
