@@ -12,7 +12,7 @@ const float DISTANCE_PER_PULSE = M_PI * WHEEL_DIAMETER / ENCODER_PULSES_PER_REVO
 const char STX = '!';   // start of frame
 const char ETX = '@';   // end of frame
 
-enum ControlMode { AUTO, MANUAL };    // choose whether control system controls the motors (AUTO) or user manually sets wheel movements (MANUAL)
+enum ControlMode { AUTO, MANUAL, FUNCTION };    // choose whether control system controls the motors (AUTO) or user manually sets wheel movements (MANUAL)
 enum MotorDirection { FORWARD, REVERSE }; 
 
 
