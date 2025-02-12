@@ -45,7 +45,7 @@ T_b = T_b_trans + T_b_rot               # total kinetic energy of the body
 vel_w = sp.sqrt(dx_w**2 + dy_w**2)                      # velocity of the wheel's center of mass
 T_w_trans_L = T_w_trans_R = 0.5 * m_w * vel_w**2        # translational kinetic energy of each wheel
 T_w_rot_L = T_w_rot_R = 0.5 * I_w * dpsi**2             # rotational kinetic energy of each wheel
-T_w = T_w_trans_L + T_w_trans_R + T_w_rot_L             # total kinetic energy of the body
+T_w = T_w_trans_L + T_w_trans_R + T_w_rot_L + T_w_rot_R     # total kinetic energy of the body
 
 T = T_b + T_w
 
@@ -60,18 +60,18 @@ V = V_b + V_w_L + V_w_R
 # calculate Lagrangian
 
 L = T - V
+L = sp.simplify(L)
 
 # plug into Euler-Lagrange equation to obtain system equations
 
 partial_L_by_partial_dtheta = sp.diff(L, dtheta)
 partial_L_by_partial_theta = sp.diff(L, theta)
 euler_lagrange = sp.diff(partial_L_by_partial_dtheta, t) - partial_L_by_partial_theta
+euler_lagrange = sp.simplify(euler_lagrange)
 
 
 # print(T_b_trans)
 # print(T_b_rot)
-# print('T_w_L:', T_w_L)
+print('T_w_trans_L:', T_w_trans_L)
 print('L:', L)
 print('euler_lagrange:', euler_lagrange)
-
-
