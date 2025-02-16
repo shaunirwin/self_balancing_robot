@@ -8,7 +8,7 @@ dependencies = [
     "numpy",
     "PyQt6",
     "matplotlib",
-    "pyserial",
     "pandas",
-    "mujoco"
+    "mujoco",
+    "sympy"
 ]
