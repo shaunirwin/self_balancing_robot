@@ -4,7 +4,7 @@ Welcome to the project page for the self-balancing robot!
 
 ## Objectives
 
-The goal of this project is to develop a robotic platform that can serve as a fun way to learn about various aspects of robotics, including classical and learning-based control, 3D vision and sensor fusion and modelling.
+The goal of this project is to develop a robotic platform that can serve as a fun way to explore various aspects of robotics, including classical and learning-based control, 3D vision, sensor fusion and modelling.
 
 ## Status
 
