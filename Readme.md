@@ -15,4 +15,4 @@ Once I am satisfied with the classical controller (both PID and LQR), I will mov
 
 The robot stting in its harness:
 
-![[self_balancing_robot.jpg]]
+![Self-balancing robot](self_balancing_robot.jpg)
