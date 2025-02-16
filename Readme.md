@@ -16,3 +16,5 @@ Once I am satisfied with the classical controller (both PID and LQR), I will mov
 The robot stting in its harness:
 
 ![Self-balancing robot](self_balancing_robot.jpg)
+
+A ![https://cad.onshape.com/documents/d3fc6fa172b94317767931eb/w/4836ae253482adeaddadde79/e/e547ee002620e145acb73cc3](link) to the OnShape mechanical design.
