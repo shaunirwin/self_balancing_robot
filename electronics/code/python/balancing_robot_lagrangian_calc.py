@@ -173,13 +173,15 @@ def explicit_constraints_method():
     partial_L_by_partial_dx = sp.diff(L, dx_w)
     partial_L_by_partial_x = sp.diff(L, x_w)
     partial_D_by_partial_dx = sp.diff(D, dx_w)
-    euler_lagrange_1 = sp.diff(partial_L_by_partial_dx, t) - partial_L_by_partial_x - torque + partial_D_by_partial_dx
+    Q_x_w = torque / r
+    euler_lagrange_1 = sp.diff(partial_L_by_partial_dx, t) - partial_L_by_partial_x - Q_x_w + partial_D_by_partial_dx
     euler_lagrange_1 = sp.simplify(euler_lagrange_1)
 
     partial_L_by_partial_dtheta = sp.diff(L, dtheta)
     partial_L_by_partial_theta = sp.diff(L, theta)
     partial_D_by_partial_dtheta = sp.diff(D, dtheta)
-    euler_lagrange_2 = sp.diff(partial_L_by_partial_dtheta, t) - partial_L_by_partial_theta + torque + partial_D_by_partial_dtheta    # NB: sign of torque is opposite, since psoitive torque decreases theta
+    Q_theta = -torque       # NB: sign of torque is opposite, since psoitive torque decreases theta
+    euler_lagrange_2 = sp.diff(partial_L_by_partial_dtheta, t) - partial_L_by_partial_theta - Q_theta + partial_D_by_partial_dtheta
     euler_lagrange_2 = sp.simplify(euler_lagrange_2)
 
     # print(T_b_trans)
@@ -190,11 +192,10 @@ def explicit_constraints_method():
     print('euler_lagrange_2:', euler_lagrange_2)
 
     # answer from sympy: 
-    # not correct?
-    # euler_lagrange_1: (2.0*I_w*Derivative(x_w(t), (t, 2)) + 2.0*b_w*Derivative(x_w(t), t) + r**2*(-1.0*h*m_b*sin(theta(t))*Derivative(theta(t), t)**2 + 1.0*h*m_b*cos(theta(t))*Derivative(theta(t), (t, 2)) + 1.0*m_b*Derivative(x_w(t), (t, 2)) + 2.0*m_w*Derivative(x_w(t), (t, 2)) - torque_L(t) - torque_R(t)))/r**2
-    #    = (2 * I_w * d_xw_by_t2 + 2 * b_w * d_xw_by_t + r**2 * (-h * m_b * sin(theta) * d_theta_by_t**2 + h * m_b * cos(theta) * d_theta_by_t2 + m_b * d_xw_by_t2 + 2 * m_w * d_xw_by_t2 - torque_L - torque_R))/r**2
-    
-    # correct (same as the paper):
+    # euler_lagrange_1: (2.0*I_w*Derivative(x_w(t), (t, 2)) + 2.0*b_w*Derivative(x_w(t), t) + r**2*(-1.0*h*m_b*sin(theta(t))*Derivative(theta(t), t)**2 + 1.0*h*m_b*cos(theta(t))*Derivative(theta(t), (t, 2)) + 1.0*m_b*Derivative(x_w(t), (t, 2)) + 2.0*m_w*Derivative(x_w(t), (t, 2))) - r*(torque_L(t) + torque_R(t)))/r**2
+    # = (2 * I_w * d_xw_by_t2 + 2 * b_w * d_xw_by_t + r**2 * (-h * m_b * sin(theta) * (d_theta_by_t)**2 + h * m_b * cos(theta) * d_theta_by_t2 + m_b * d_xw_by_t2 + 2 * m_w * d_xw_by_t2) - r * (torque_L + torque_R)) / r**2
+
+
     # euler_lagrange_2: 1.0*I_b*Derivative(theta(t), (t, 2)) - 1.0*g*h*m_b*sin(theta(t)) + 1.0*h**2*m_b*Derivative(theta(t), (t, 2)) + 1.0*h*m_b*cos(theta(t))*Derivative(x_w(t), (t, 2)) + 1.0*torque_L(t) + 1.0*torque_R(t)
     #    = I_b * d_theta_by_t2 - g * h * m_b * sin(theta) + h**2 * m_b * d_theta_by_t2 + h * m_b * cos(theta) * d_xw_by_t2 + torque_L + torque_R
     #    = h * m_b * cos(theta) * d_xw_by_t2 + (h**2 * m_b + I_b) * d_theta_by_t2 - g * h * m_b * sin(theta) + torque_L + torque_R
