@@ -10,5 +10,6 @@ dependencies = [
     "matplotlib",
     "pandas",
     "mujoco",
-    "sympy"
+    "sympy",
+    "control"
 ]
