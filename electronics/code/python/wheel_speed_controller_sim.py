@@ -57,7 +57,7 @@ def main():
     pulses_per_sec_per_duty_cycle =  5385. / 255.    # [(pusles/sec)/duty_cycle]
     motor_cont = ct.tf(pulses_per_sec_per_duty_cycle, (motor_ts, 1), inputs='u', outputs='y')
 
-    t, y = ct.step_response(motor_cont, 0.1)
+    # t, y = ct.step_response(motor_cont, 0.1)
     # plt.figure()
     # plt.plot(t, y, label='continouous-time model of motor')
     # plt.xlabel('Time [sec]')
@@ -68,17 +68,26 @@ def main():
     controller_Ts = 1 / freq_controller_sample # sampling interval of controller
     freq_sim_sample = freq_controller_sample * 5    # Hz
     simulation_dt = 1./freq_sim_sample # time step for numerical simulation ("numerical integration")
-    motor_discrete = ct.c2d(motor_cont, simulation_dt, 'zoh')
+    motor_discrete = ct.c2d(motor_cont, controller_Ts, 'zoh')
+    motor_sim = ct.c2d(motor_cont, simulation_dt, 'zoh')
 
-    t, y = ct.step_response(motor_discrete, 0.1)
+    # t, y = ct.step_response(motor_sim, 0.1)
     
     # plt.plot(t, y, '.-', label='discrete-time model of motor')
     # plt.legend()
     # plt.xlabel('time (s)')
     # plt.ylabel('Wheel speed [pulses/sec]')
 
-    # create discrete-time controller with some dynamics
-    controller = ct.tf(1 * 0.05, [1, -.9], controller_Ts, inputs='e', outputs='u')
+    # create discrete-time controller
+    Kp = 1. * 0.25 * 0.68
+    Ki = 2.2
+    Kd = 0.
+    controller_p = ct.tf([Kp], [1], controller_Ts)
+    controller_i = ct.tf([Ki * controller_Ts], [1, -1], controller_Ts)
+    controller_d = ct.tf([Kd, -Kd], [controller_Ts, 0], controller_Ts)
+    controller = controller_p + controller_i + controller_d
+    controller.set_inputs('e')
+    controller.set_outputs('u')
 
     # create model of controller with a much shorter sampling time for simulation
     controller_simulator = sampled_data_controller(controller, simulation_dt)
@@ -95,8 +104,12 @@ def main():
 
     # plant_simulator = ct.c2d(motor_cont, simulation_dt, 'zoh')
     # system from r to y
-    closed_loop_simulator = ct.interconnect([controller_simulator, motor_discrete, u_summer],
+    closed_loop_simulator = ct.interconnect([controller_simulator, motor_sim, u_summer],
         inputs='r', outputs=['y', 'u'])
+    
+    H = controller * motor_discrete
+    H_sim = controller_simulator * motor_sim
+    closed_loop_tf = ct.feedback(H, 1, sign=-1)
 
     # simulate
     setpoint = 700.     # setpoint wheel speed [pulses/sec]
@@ -112,6 +125,8 @@ def main():
     ax[1].set_xlabel('time [sec]')
     ax[1].legend()
 
+    plt.figure()
+    ct.rlocus(H)
     plt.show()
 
 
