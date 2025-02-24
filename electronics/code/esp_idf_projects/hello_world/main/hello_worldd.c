@@ -2,29 +2,103 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
+#include "driver/uart.h"
 #include "esp_log.h"
-// #include "led_strip.h"
 #include "sdkconfig.h"
+
+#include "data_structs.h"
 
 static const char *TAG = "example";
 
-/* Use project configuration menu (idf.py menuconfig) to choose the GPIO to blink,
-   or you can edit the following line and set a number here.
-*/
-#define BLINK_GPIO 2 //CONFIG_BLINK_GPIO
+const int PIN_LED_PWM = 2;
 
+// UART
+
+#define BUF_SIZE (1024)
+
+
+
+static void echo_task(void *arg)
+{
+    const int UART_PORT_NUM = UART_NUM_1;
+    const int PIN_UART_TXD = 43;
+    const int PIN_UART_RXD = 44;
+    // const int PIN_UART_RTS = ;
+    // const int PIN_UART_CTS;
+
+    uart_config_t uart_config = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity    = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        // .source_clk = UART_SCLK_DEFAULT
+    };
+    int intr_alloc_flags = 0;
+
+    #if CONFIG_UART_ISR_IN_IRAM
+        intr_alloc_flags = ESP_INTR_FLAG_IRAM;
+    #endif
+
+    ESP_ERROR_CHECK(uart_driver_install(UART_PORT_NUM, BUF_SIZE * 2, 0, 0, NULL, intr_alloc_flags));
+    ESP_ERROR_CHECK(uart_param_config(UART_PORT_NUM, &uart_config));
+    ESP_ERROR_CHECK(uart_set_pin(UART_PORT_NUM, PIN_UART_TXD, PIN_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+
+    // Configure a temporary buffer for the incoming data
+    // uint8_t *data = (uint8_t *) malloc(BUF_SIZE);
+
+    PacketHeader_t packetHeader;
+    packetHeader.packetID = 268;
+    // packetHeader.microSecondsSinceBoot = esp_timer_get_time();
+    
+    DataPacket_t dataPacket;
+
+
+    while (1) {
+        // Read data from the UART
+        // int len = uart_read_bytes(ECHO_UART_PORT_NUM, data, (BUF_SIZE - 1), 20 / portTICK_PERIOD_MS);
+        // Write data back to the UART
+
+        // Serial.write(STX);
+        // Serial.write( (uint8_t *) &packetHeader, sizeof( packetHeader ) );
+        // Serial.write( (uint8_t *) &dataPacket, sizeof( dataPacket ) );
+        // Serial.write(ETX);
+
+        uart_write_bytes(UART_PORT_NUM, &STX, 1);
+        uart_write_bytes(UART_PORT_NUM, (uint8_t *) &packetHeader, sizeof( packetHeader ));
+        uart_write_bytes(UART_PORT_NUM, (uint8_t *) &dataPacket, sizeof( dataPacket ));
+        uart_write_bytes(UART_PORT_NUM, &ETX, 1);
+
+        // uart_write_bytes(UART_PORT_NUM, (const char *) data, len);
+        // if (len) {
+        //     data[len] = '\0';
+        //     ESP_LOGI(TAG, "Recv str: %s", (char *) data);
+        // }
+
+        vTaskDelay(1000 / portTICK_PERIOD_MS);  // delay 1 sec
+    }
+}
+
+
+
+// extern "C" void app_main(void)
 void app_main(void)
 {
+    
+
+    xTaskCreate(echo_task, "uart_echo_task", 2048, NULL, 10, NULL);
+
+
     /* Reset the pin */
-    gpio_reset_pin(BLINK_GPIO);
+    gpio_reset_pin(PIN_LED_PWM);
     /* Set the GPIOs to Output mode */
-    gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_direction(PIN_LED_PWM, GPIO_MODE_OUTPUT);
     while (1) 
     {
-        gpio_set_level(BLINK_GPIO, 1);
+        gpio_set_level(PIN_LED_PWM, 1);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
         ESP_LOGI(TAG, "Turning the LED %s!","ON");
-        gpio_set_level(BLINK_GPIO, 0);
+        gpio_set_level(PIN_LED_PWM, 0);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
         ESP_LOGI(TAG, "Turning the LED %s!","OFF");
     }
