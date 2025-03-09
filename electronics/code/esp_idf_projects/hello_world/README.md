@@ -2,6 +2,10 @@
 
 # Initial set up of ESP-IDF
 
+```
+git clone
+git submodule update --init --recursive
+```
 
 # Creating a new project using ESP-IDF
 

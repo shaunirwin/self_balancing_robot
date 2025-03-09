@@ -3,6 +3,7 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
+#include "driver/pulse_cnt.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
 #include "esp_timer.h"
