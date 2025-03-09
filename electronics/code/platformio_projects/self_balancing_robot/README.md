@@ -21,6 +21,6 @@ Run the script to read and siplay data from the ESP32:
 
 ```bash
 cd src
-g++ -std=c++2a -o read_serial read_serial.cpp
+g++ -std=c++2a -o read_serial -I ../../../esp_idf_projects/hello_world/main/include read_serial.cpp
 ./read_serial
 ```
