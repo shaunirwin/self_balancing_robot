@@ -50,17 +50,12 @@ static void echo_task(void *arg)
     // Configure a temporary buffer for the incoming data
     // uint8_t *data = (uint8_t *) malloc(BUF_SIZE);
 
-    PacketHeader_t packetHeader;
-    packetHeader.packetID = 268;
-    packetHeader.microSecondsSinceBoot = esp_timer_get_time();
-    
-    DataPacket_t dataPacket;
-
-
     while (1) {
-        // Read data from the UART
-        // int len = uart_read_bytes(ECHO_UART_PORT_NUM, data, (BUF_SIZE - 1), 20 / portTICK_PERIOD_MS);
-        // Write data back to the UART
+        PacketHeader_t packetHeader;
+        packetHeader.packetID = 268;
+        packetHeader.microSecondsSinceBoot = esp_timer_get_time();
+        
+        DataPacket_t dataPacket;
 
         // Serial.write(STX);
         // Serial.write( (uint8_t *) &packetHeader, sizeof( packetHeader ) );
