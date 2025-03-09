@@ -174,8 +174,8 @@ void readSerial(int fd, bool logToCSV, std::string csvPath) {
 
                     if (packetsReceived % 10 == 0) {
                         std::cout << "Received message: " << header.packetID << ", " << (int) (header.microSecondsSinceBoot / 1e6) << "sec (" << std::setprecision(3) << std::setfill('0') << (1.f/timeDeltaSec) << "Hz):" << 
-                        // data.state.motor1EncoderPulses << " M1 pulses (" << std::round(motor1PulsesPerSec) << " pulses/sec), " << 
-                        // data.state.motor2EncoderPulses << " M2 pulses (" << std::round(motor2PulsesPerSec) << " pulses/sec), " << 
+                        data.state.motor1EncoderPulses << " M1 pulses (" << std::round(motor1PulsesPerSec) << " pulses/sec), " << 
+                        data.state.motor2EncoderPulses << " M2 pulses (" << std::round(motor2PulsesPerSec) << " pulses/sec), " << 
                         std::fixed  << std::internal <<  std::showpos << std::setw(6) << std::setprecision(2) << std::setfill(' ') <<
                         "ax: " << data.imu.ax << " m/s^2, " << 
                         "az: " << data.imu.az << " m/s^2, " << 

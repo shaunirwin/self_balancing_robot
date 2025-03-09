@@ -5,6 +5,7 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
+#include "esp_timer.h"
 
 #include "data_structs.h"
 
@@ -51,9 +52,9 @@ static void echo_task(void *arg)
 
     PacketHeader_t packetHeader;
     packetHeader.packetID = 268;
-    // packetHeader.microSecondsSinceBoot = esp_timer_get_time();
+    packetHeader.microSecondsSinceBoot = esp_timer_get_time();
     
-    // DataPacket_t dataPacket;
+    DataPacket_t dataPacket;
 
 
     while (1) {
@@ -68,7 +69,7 @@ static void echo_task(void *arg)
 
         uart_write_bytes(UART_PORT_NUM, &STX, 1);
         uart_write_bytes(UART_PORT_NUM, (uint8_t *) &packetHeader, sizeof( packetHeader ));
-        // uart_write_bytes(UART_PORT_NUM, (uint8_t *) &dataPacket, sizeof( dataPacket ));
+        uart_write_bytes(UART_PORT_NUM, (uint8_t *) &dataPacket, sizeof( dataPacket ));
         uart_write_bytes(UART_PORT_NUM, &ETX, 1);
 
         // uart_write_bytes(UART_PORT_NUM, (const char *) data, len);
