@@ -11,9 +11,7 @@
 
 static const char *TAG = "example";
 
-const auto PIN_LED_PWM = GPIO_NUM_2; // 2;
-
-// UART
+const auto PIN_LED_PWM = GPIO_NUM_2;
 
 #define BUF_SIZE (1024)
 
@@ -33,8 +31,8 @@ static void echo_task(void *arg)
         .parity    = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        // .source_clk = UART_SCLK_DEFAULT
         .rx_flow_ctrl_thresh=122,
+        .source_clk = UART_SCLK_DEFAULT,
         .flags=0
     };
     int intr_alloc_flags = 0;
@@ -47,9 +45,6 @@ static void echo_task(void *arg)
     ESP_ERROR_CHECK(uart_param_config(UART_PORT_NUM, &uart_config));
     ESP_ERROR_CHECK(uart_set_pin(UART_PORT_NUM, PIN_UART_TXD, PIN_UART_RXD, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
-    // Configure a temporary buffer for the incoming data
-    // uint8_t *data = (uint8_t *) malloc(BUF_SIZE);
-
     while (1) {
         PacketHeader_t packetHeader;
         packetHeader.packetID = 268;
@@ -57,21 +52,10 @@ static void echo_task(void *arg)
         
         DataPacket_t dataPacket;
 
-        // Serial.write(STX);
-        // Serial.write( (uint8_t *) &packetHeader, sizeof( packetHeader ) );
-        // Serial.write( (uint8_t *) &dataPacket, sizeof( dataPacket ) );
-        // Serial.write(ETX);
-
         uart_write_bytes(UART_PORT_NUM, &STX, 1);
         uart_write_bytes(UART_PORT_NUM, (uint8_t *) &packetHeader, sizeof( packetHeader ));
         uart_write_bytes(UART_PORT_NUM, (uint8_t *) &dataPacket, sizeof( dataPacket ));
         uart_write_bytes(UART_PORT_NUM, &ETX, 1);
-
-        // uart_write_bytes(UART_PORT_NUM, (const char *) data, len);
-        // if (len) {
-        //     data[len] = '\0';
-        //     ESP_LOGI(TAG, "Recv str: %s", (char *) data);
-        // }
 
         vTaskDelay(1000 / portTICK_PERIOD_MS);  // delay 1 sec
     }
