@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cstdint>
+// #include <sstream>
+// #include <iomanip>
 #include <cmath>
 
 const int ESTIMATOR_FREQ = 100; //250;        // frequency to run state estimator at [Hz]
 const float WHEEL_DIAMETER = 0.0618;  // [m]
-const uint ENCODER_PULSES_PER_REVOLUTION = 700*2;   // detects rising and falling edge of each pulse
+const uint32_t ENCODER_PULSES_PER_REVOLUTION = 700*2;   // detects rising and falling edge of each pulse
 const float DISTANCE_PER_PULSE = M_PI * WHEEL_DIAMETER / ENCODER_PULSES_PER_REVOLUTION; 
 
 // serial tx control characters
@@ -95,8 +97,8 @@ typedef struct {
 
 
 typedef struct {
-  uint dutyCycle1;
-  uint dutyCycle2;
+  uint8_t dutyCycle1;
+  uint8_t dutyCycle2;
   MotorDirection motor1dir;
   MotorDirection motor2dir;
 
@@ -125,7 +127,8 @@ typedef struct {
 
 
 typedef struct {
-  IMUPacket_t imu;
-  PitchAngleCalcPacket_t pitchInfo;
+  // IMUPacket_t imu;
+  // PitchAngleCalcPacket_t pitchInfo;
   StateEstimatePacket_t state;
+  ControlPacket_t control;
 } __attribute__((packed)) DataPacket_t;
