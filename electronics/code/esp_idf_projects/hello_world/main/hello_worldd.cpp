@@ -10,7 +10,7 @@
 
 static const char *TAG = "example";
 
-const int PIN_LED_PWM = 2;
+const auto PIN_LED_PWM = GPIO_NUM_2; // 2;
 
 // UART
 
@@ -20,7 +20,7 @@ const int PIN_LED_PWM = 2;
 
 static void echo_task(void *arg)
 {
-    const int UART_PORT_NUM = UART_NUM_1;
+    const auto UART_PORT_NUM = UART_NUM_1;
     const int PIN_UART_TXD = 43;
     const int PIN_UART_RXD = 44;
     // const int PIN_UART_RTS = ;
@@ -33,6 +33,8 @@ static void echo_task(void *arg)
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         // .source_clk = UART_SCLK_DEFAULT
+        .rx_flow_ctrl_thresh=122,
+        .flags=0
     };
     int intr_alloc_flags = 0;
 
@@ -51,7 +53,7 @@ static void echo_task(void *arg)
     packetHeader.packetID = 268;
     // packetHeader.microSecondsSinceBoot = esp_timer_get_time();
     
-    DataPacket_t dataPacket;
+    // DataPacket_t dataPacket;
 
 
     while (1) {
@@ -66,7 +68,7 @@ static void echo_task(void *arg)
 
         uart_write_bytes(UART_PORT_NUM, &STX, 1);
         uart_write_bytes(UART_PORT_NUM, (uint8_t *) &packetHeader, sizeof( packetHeader ));
-        uart_write_bytes(UART_PORT_NUM, (uint8_t *) &dataPacket, sizeof( dataPacket ));
+        // uart_write_bytes(UART_PORT_NUM, (uint8_t *) &dataPacket, sizeof( dataPacket ));
         uart_write_bytes(UART_PORT_NUM, &ETX, 1);
 
         // uart_write_bytes(UART_PORT_NUM, (const char *) data, len);
@@ -79,9 +81,12 @@ static void echo_task(void *arg)
     }
 }
 
+extern "C"{
+void app_main();
+}
 
 
-// extern "C" void app_main(void)
+    
 void app_main(void)
 {
     
