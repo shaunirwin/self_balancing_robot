@@ -407,10 +407,34 @@ ManualControlPacket_t stepMotors(const uint dutyCycleMin, const uint dutyCycleMa
 void taskControlMotors(void * parameter) {
   StateEstimatePacket_t stateEstimatePacket;
   ControlPacket_t controlPacket {};
+  ControlTimingPacket_t controlTimingPacket {};
+  int64_t previousControlTimeUs = 0;
+  uint32_t controlTimingSampleCount = 0;
+  const uint32_t targetControlIntervalUs = 1000000U / ESTIMATOR_FREQ;
   
   for (;;) {
     // Wait until data is available in the queue
     if (xQueueReceive(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) == pdPASS) {
+
+      const int64_t controlTimeUs = esp_timer_get_time();
+      if (previousControlTimeUs != 0) {
+        const uint32_t controlIntervalUs = static_cast<uint32_t>(controlTimeUs - previousControlTimeUs);
+        const uint32_t absJitterUs = controlIntervalUs >= targetControlIntervalUs
+            ? controlIntervalUs - targetControlIntervalUs
+            : targetControlIntervalUs - controlIntervalUs;
+
+        controlTimingSampleCount++;
+        controlTimingPacket.interval_us = controlIntervalUs;
+        controlTimingPacket.average_interval_us +=
+            (static_cast<float>(controlIntervalUs) - controlTimingPacket.average_interval_us)
+            / controlTimingSampleCount;
+        controlTimingPacket.average_abs_jitter_us +=
+            (static_cast<float>(absJitterUs) - controlTimingPacket.average_abs_jitter_us)
+            / controlTimingSampleCount;
+        controlTimingPacket.max_abs_jitter_us =
+            std::max(controlTimingPacket.max_abs_jitter_us, absJitterUs);
+      }
+      previousControlTimeUs = controlTimeUs;
 
       controlPacket.manual = {
         .dutyCycle1 = dutyCycle1Manual,
@@ -456,6 +480,7 @@ void taskControlMotors(void * parameter) {
         telemetryPacket.header.microSecondsSinceBoot = esp_timer_get_time();
         telemetryPacket.data.state = stateEstimatePacket;
         telemetryPacket.data.control = controlPacket;
+        telemetryPacket.data.controlTiming = controlTimingPacket;
 
         // Never wait for telemetry: replace an unsent snapshot with the latest one.
         xQueueOverwrite(queueTelemetry, &telemetryPacket);

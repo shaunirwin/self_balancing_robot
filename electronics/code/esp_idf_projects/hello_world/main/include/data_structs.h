@@ -125,10 +125,19 @@ typedef struct {
 } __attribute__((packed)) ControlPacket_t;
 
 
+typedef struct {
+  uint32_t interval_us;             // latest measured interval between control updates
+  float average_interval_us;        // running average since startup
+  float average_abs_jitter_us;      // running average of abs(interval - target interval)
+  uint32_t max_abs_jitter_us;       // largest abs(interval - target interval) since startup
+} __attribute__((packed)) ControlTimingPacket_t;
+
+
 
 typedef struct {
   // IMUPacket_t imu;
   // PitchAngleCalcPacket_t pitchInfo;
   StateEstimatePacket_t state;
   ControlPacket_t control;
+  ControlTimingPacket_t controlTiming;
 } __attribute__((packed)) DataPacket_t;
