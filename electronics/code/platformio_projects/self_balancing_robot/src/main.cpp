@@ -88,6 +88,14 @@ volatile SemaphoreHandle_t timerSemaphore;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 QueueHandle_t queueIMU;  // queue of IMU measurements
 QueueHandle_t queueStateEstimates;  // queue of state estimates
+QueueHandle_t queueTelemetry;  // latest telemetry snapshot waiting for serial transmission
+
+const uint TELEMETRY_DECIMATION = 5;  // transmit at 20 Hz when the controller runs at 100 Hz
+
+typedef struct {
+  PacketHeader_t header;
+  DataPacket_t data;
+} TelemetryPacket_t;
 
 MotorDirection dirDrive { MotorDirection::FORWARD };
 MotorDirection motor1DirManual { MotorDirection::FORWARD }; // motor 1 direction when in manual mode
@@ -398,7 +406,7 @@ ManualControlPacket_t stepMotors(const uint dutyCycleMin, const uint dutyCycleMa
 
 void taskControlMotors(void * parameter) {
   StateEstimatePacket_t stateEstimatePacket;
-  ControlPacket_t controlPacket;
+  ControlPacket_t controlPacket {};
   
   for (;;) {
     // Wait until data is available in the queue
@@ -437,28 +445,23 @@ void taskControlMotors(void * parameter) {
       controlPacket.motorOutput = 
         calcMotorOutput(motor1dir, motor2dir, dutyCycle1, dutyCycle2, stateEstimatePacket.estimatesValid);
 
-      
-      PacketHeader_t packetHeader;
-      packetHeader.packetID = packetID;
-      packetHeader.microSecondsSinceBoot = esp_timer_get_time();
-      
-      DataPacket_t dataPacket;
-      // dataPacket.imu = imuPacket;
-      // dataPacket.pitchInfo = pitchAngleCalcPacket;
-      dataPacket.state = stateEstimatePacket;
-      dataPacket.control = controlPacket;
-
-      Serial.write(STX);
-      Serial.write( (uint8_t *) &packetHeader, sizeof( packetHeader ) );
-      Serial.write( (uint8_t *) &dataPacket, sizeof( dataPacket ) );
-      Serial.write(ETX);
-
-      packetID ++;
-
       ledcWrite(MOTOR1_PWM_CHANNEL, controlPacket.motorOutput.dutyCycle1);
       ledcWrite(MOTOR2_PWM_CHANNEL, controlPacket.motorOutput.dutyCycle2Calibrated);
       digitalWrite(PIN_MOTOR1_DIR, controlPacket.motorOutput.motor1dir);
       digitalWrite(PIN_MOTOR2_DIR, controlPacket.motorOutput.motor2dir);
+
+      if (packetID % TELEMETRY_DECIMATION == 0) {
+        TelemetryPacket_t telemetryPacket;
+        telemetryPacket.header.packetID = packetID;
+        telemetryPacket.header.microSecondsSinceBoot = esp_timer_get_time();
+        telemetryPacket.data.state = stateEstimatePacket;
+        telemetryPacket.data.control = controlPacket;
+
+        // Never wait for telemetry: replace an unsent snapshot with the latest one.
+        xQueueOverwrite(queueTelemetry, &telemetryPacket);
+      }
+
+      packetID ++;
 
       // log data to RAM
       if (enableLogging) {
@@ -473,6 +476,19 @@ void taskControlMotors(void * parameter) {
 
         logIndex ++;
       }
+    }
+  }
+}
+
+void taskTransmitTelemetry(void * parameter) {
+  TelemetryPacket_t telemetryPacket;
+
+  for (;;) {
+    if (xQueueReceive(queueTelemetry, &telemetryPacket, portMAX_DELAY) == pdPASS) {
+      Serial.write(STX);
+      Serial.write(reinterpret_cast<const uint8_t *>(&telemetryPacket.header), sizeof(telemetryPacket.header));
+      Serial.write(reinterpret_cast<const uint8_t *>(&telemetryPacket.data), sizeof(telemetryPacket.data));
+      Serial.write(ETX);
     }
   }
 }
@@ -1011,11 +1027,17 @@ void setup(){
       Serial.println("Failed to create queue");
       while (1);
   }
+  queueTelemetry = xQueueCreate(1, sizeof(TelemetryPacket_t));
+  if (queueTelemetry == NULL) {
+      Serial.println("Failed to create telemetry queue");
+      while (1);
+  }
 
   // Create the task that will be executed periodically
   xTaskCreate(taskReadIMURawValues, "Read Raw IMU Values", 10000, NULL, 1, NULL);
   xTaskCreate(taskEstimateState, "Estimate State", 2048, NULL, 1, NULL);
-  xTaskCreate(taskControlMotors, "Estimate State", 2048, NULL, 1, NULL);
+  xTaskCreate(taskControlMotors, "Control Motors", 2048, NULL, 2, NULL);
+  xTaskCreate(taskTransmitTelemetry, "Transmit Telemetry", 2048, NULL, 1, NULL);
 
   hwTimer = timerBegin(/* timer num */ 0, /* clock divider */ 80, /* count up */true);
   timerAttachInterrupt(hwTimer, &stateEstimatorTimer, /* edge */ true);
