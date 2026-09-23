@@ -91,7 +91,9 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 QueueHandle_t queueIMU;  // queue of IMU measurements
 QueueHandle_t queueStateEstimates;  // queue of state estimates
 QueueHandle_t queueTelemetry;  // latest telemetry snapshot waiting for serial transmission
+QueueHandle_t queueControlCommands;  // commands from the I/O core to the control core
 std::atomic<bool> resetControlTimingRequested {false};
+std::atomic<bool> emergencyStopRequested {false};
 
 const uint TELEMETRY_DECIMATION = 5;  // transmit at 20 Hz when the controller runs at 100 Hz
 
@@ -101,6 +103,31 @@ constexpr BaseType_t CONTROL_CORE = 1;
 constexpr UBaseType_t IO_TASK_PRIORITY = 1;
 constexpr UBaseType_t CONTROL_PIPELINE_PRIORITY = 3;
 constexpr UBaseType_t MOTOR_CONTROL_PRIORITY = 4;
+constexpr float AUTO_ARM_MAX_PITCH_ERROR = 5.0f * M_PI / 180.0f;
+
+enum class ControlCommandType : uint8_t {
+  SET_PID_KP,
+  SET_PID_KI,
+  SET_PID_KD,
+  SET_PID_SETPOINT,
+  SET_DUTY_CYCLE_MIN,
+  SET_DUTY_CYCLE_MAX,
+  SET_PITCH_ERROR_MAX,
+  SET_PITCH_ERROR_MIN,
+  SET_CONTROL_MODE,
+  SET_MOTOR1_DIRECTION,
+  SET_MOTOR2_DIRECTION,
+  SET_MOTOR1_DUTY,
+  SET_MOTOR2_DUTY,
+};
+
+typedef struct {
+  ControlCommandType type;
+  float floatValue;
+  uint32_t uintValue;
+  ControlMode controlMode;
+  MotorDirection motorDirection;
+} ControlCommand_t;
 
 typedef struct {
   PacketHeader_t header;
@@ -110,8 +137,8 @@ typedef struct {
 MotorDirection dirDrive { MotorDirection::FORWARD };
 MotorDirection motor1DirManual { MotorDirection::FORWARD }; // motor 1 direction when in manual mode
 MotorDirection motor2DirManual { MotorDirection::FORWARD };
-uint dutyCycle1Manual {0};                // motor 1 duty cycle when in manual mode
-uint dutyCycle2Manual {0};
+uint8_t dutyCycle1Manual {0};             // motor 1 duty cycle when in manual mode
+uint8_t dutyCycle2Manual {0};
 
 // Always boot disarmed. AUTO must be selected explicitly after calibration and
 // the live state estimate have been checked.
@@ -145,6 +172,28 @@ uint logIndex = 0;
 
 // PID controller
 PropIntDiff pid(-1.f, 1.f, 1.f);
+
+typedef struct {
+  float pidKp;
+  float pidKi;
+  float pidKd;
+  float pitchSetpoint;
+  float pitchCurrent;
+  uint dutyCycleMin;
+  uint dutyCycleMax;
+  float pitchErrorMax;
+  float pitchErrorMin;
+  ControlMode controlMode;
+  MotorDirection motor1Direction;
+  MotorDirection motor2Direction;
+  uint dutyCycle1Manual;
+  uint dutyCycle2Manual;
+  bool estimatesValid;
+  bool autoArmAllowed;
+} ControlStatusSnapshot_t;
+
+portMUX_TYPE controlStatusMux = portMUX_INITIALIZER_UNLOCKED;
+ControlStatusSnapshot_t controlStatusSnapshot {};
 
 
 
@@ -390,6 +439,105 @@ void stopMotors() {
   controlMode = ControlMode::MANUAL;
 }
 
+void applyControlCommand(const ControlCommand_t &command,
+                         const StateEstimatePacket_t &stateEstimatePacket) {
+  switch (command.type) {
+    case ControlCommandType::SET_PID_KP:
+      pid.kp = command.floatValue;
+      break;
+    case ControlCommandType::SET_PID_KI:
+      pid.ki = command.floatValue;
+      break;
+    case ControlCommandType::SET_PID_KD:
+      pid.kd = command.floatValue;
+      break;
+    case ControlCommandType::SET_PID_SETPOINT:
+      pitch_angle_setpoint = command.floatValue;
+      break;
+    case ControlCommandType::SET_DUTY_CYCLE_MIN:
+      if (command.uintValue <= DUTY_CYCLE_MAX) {
+        DUTY_CYCLE_MIN = command.uintValue;
+      }
+      break;
+    case ControlCommandType::SET_DUTY_CYCLE_MAX:
+      if (command.uintValue >= DUTY_CYCLE_MIN) {
+        DUTY_CYCLE_MAX = command.uintValue;
+      }
+      break;
+    case ControlCommandType::SET_PITCH_ERROR_MAX:
+      PITCH_ANGLE_ERROR_MAX = command.floatValue;
+      break;
+    case ControlCommandType::SET_PITCH_ERROR_MIN:
+      PITCH_ANGLE_ERROR_MIN = command.floatValue;
+      break;
+    case ControlCommandType::SET_CONTROL_MODE:
+      if (command.controlMode == ControlMode::MANUAL) {
+        stopMotors();
+        pid.initialize();
+      }
+      else if (command.controlMode == ControlMode::AUTO) {
+        const float pitchError =
+            stateEstimatePacket.pitch_est - pitch_angle_setpoint;
+        const bool safeToArm = stateEstimatePacket.estimatesValid
+            && abs(pitchError) <= AUTO_ARM_MAX_PITCH_ERROR;
+
+        // Clear latent manual commands whether AUTO arming succeeds or fails.
+        stopMotors();
+        pid.initialize();
+        if (safeToArm) {
+          controlMode = ControlMode::AUTO;
+        }
+      }
+      break;
+    case ControlCommandType::SET_MOTOR1_DIRECTION:
+      motor1DirManual = command.motorDirection;
+      break;
+    case ControlCommandType::SET_MOTOR2_DIRECTION:
+      motor2DirManual = command.motorDirection;
+      break;
+    case ControlCommandType::SET_MOTOR1_DUTY:
+      dutyCycle1Manual = static_cast<uint8_t>(command.uintValue);
+      break;
+    case ControlCommandType::SET_MOTOR2_DUTY:
+      dutyCycle2Manual = static_cast<uint8_t>(command.uintValue);
+      break;
+  }
+}
+
+void publishControlStatus(const StateEstimatePacket_t &stateEstimatePacket) {
+  const float pitchError = stateEstimatePacket.pitch_est - pitch_angle_setpoint;
+  ControlStatusSnapshot_t snapshot {
+    .pidKp = pid.kp,
+    .pidKi = pid.ki,
+    .pidKd = pid.kd,
+    .pitchSetpoint = pitch_angle_setpoint,
+    .pitchCurrent = stateEstimatePacket.pitch_est,
+    .dutyCycleMin = DUTY_CYCLE_MIN,
+    .dutyCycleMax = DUTY_CYCLE_MAX,
+    .pitchErrorMax = PITCH_ANGLE_ERROR_MAX,
+    .pitchErrorMin = PITCH_ANGLE_ERROR_MIN,
+    .controlMode = controlMode,
+    .motor1Direction = motor1DirManual,
+    .motor2Direction = motor2DirManual,
+    .dutyCycle1Manual = dutyCycle1Manual,
+    .dutyCycle2Manual = dutyCycle2Manual,
+    .estimatesValid = stateEstimatePacket.estimatesValid,
+    .autoArmAllowed = stateEstimatePacket.estimatesValid
+        && abs(pitchError) <= AUTO_ARM_MAX_PITCH_ERROR,
+  };
+
+  portENTER_CRITICAL(&controlStatusMux);
+  controlStatusSnapshot = snapshot;
+  portEXIT_CRITICAL(&controlStatusMux);
+}
+
+ControlStatusSnapshot_t getControlStatus() {
+  portENTER_CRITICAL(&controlStatusMux);
+  const ControlStatusSnapshot_t snapshot = controlStatusSnapshot;
+  portEXIT_CRITICAL(&controlStatusMux);
+  return snapshot;
+}
+
 ManualControlPacket_t stepMotors(const uint dutyCycleMin, const uint dutyCycleMax, const uint period, bool changeDir) {
   // period is given in estimator packets
 
@@ -449,6 +597,29 @@ void taskControlMotors(void * parameter) {
       }
       previousControlTimeUs = controlTimeUs;
 
+      ControlCommand_t command;
+      while (xQueueReceive(queueControlCommands, &command, 0) == pdPASS) {
+        applyControlCommand(command, stateEstimatePacket);
+      }
+
+      // Emergency stop wins over every queued command received in this cycle.
+      if (emergencyStopRequested.exchange(false)) {
+        stopMotors();
+        pid.initialize();
+      }
+
+      // A fall or invalid estimate disarms AUTO instead of allowing it to
+      // restart unexpectedly when the robot is later moved back upright.
+      if (controlMode == ControlMode::AUTO) {
+        const float pitchError =
+            stateEstimatePacket.pitch_est - pitch_angle_setpoint;
+        if (!stateEstimatePacket.estimatesValid
+            || abs(pitchError) >= PITCH_ANGLE_ERROR_MAX) {
+          stopMotors();
+          pid.initialize();
+        }
+      }
+
       controlPacket.manual = {
         .dutyCycle1 = dutyCycle1Manual,
         .dutyCycle2 = dutyCycle2Manual,
@@ -486,6 +657,8 @@ void taskControlMotors(void * parameter) {
       ledcWrite(MOTOR2_PWM_CHANNEL, controlPacket.motorOutput.dutyCycle2Calibrated);
       digitalWrite(PIN_MOTOR1_DIR, controlPacket.motorOutput.motor1dir);
       digitalWrite(PIN_MOTOR2_DIR, controlPacket.motorOutput.motor2dir);
+
+      publishControlStatus(stateEstimatePacket);
 
       if (packetID % TELEMETRY_DECIMATION == 0) {
         TelemetryPacket_t telemetryPacket;
@@ -709,7 +882,15 @@ bool convertStringToUint(const String &value, uint &result) {
 // serialisation of boolean variables
 
 String controlModeToStr(const ControlMode controlMode) {
-  return controlMode == ControlMode::AUTO ? "AUTO" : "MANUAL";
+  switch (controlMode) {
+    case ControlMode::AUTO:
+      return "AUTO";
+    case ControlMode::FUNCTION:
+      return "FUNCTION";
+    case ControlMode::MANUAL:
+    default:
+      return "MANUAL";
+  }
 }
 
 ControlMode strToControlMode(String str) {
@@ -722,6 +903,10 @@ String motorDirToStr(const MotorDirection motorDir) {
 
 MotorDirection strToMotorDir(String str) {
   return str == "FORWARD" ? MotorDirection::FORWARD : MotorDirection::REVERSE;
+}
+
+bool enqueueControlCommand(const ControlCommand_t &command) {
+  return xQueueSend(queueControlCommands, &command, 0) == pdPASS;
 }
 
 
@@ -742,21 +927,25 @@ void initWebserver() {
   });
 
   server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
+    const ControlStatusSnapshot_t status = getControlStatus();
     JsonDocument jsonDoc;
-    jsonDoc["PID_Kp"] = pid.kp;
-    jsonDoc["PID_Ki"] = pid.ki;
-    jsonDoc["PID_Kd"] = pid.kd;
-    jsonDoc["PID_setpoint"] = pitch_angle_setpoint;
-    jsonDoc["pitch_angle_current"] = pitch_angle_current;
-    jsonDoc["MOTOR_DUTY_CYCLE_MIN"] = DUTY_CYCLE_MIN;
-    jsonDoc["MOTOR_DUTY_CYCLE_MAX"] = DUTY_CYCLE_MAX;
-    jsonDoc["PITCH_ANGLE_ERROR_MAX"] = PITCH_ANGLE_ERROR_MAX;
-    jsonDoc["PITCH_ANGLE_ERROR_MIN"] = PITCH_ANGLE_ERROR_MIN;
-    jsonDoc["CONTROL_MODE"] = controlModeToStr(controlMode);
-    jsonDoc["MOTOR_1_DIR_MANUAL"] = motorDirToStr(motor1DirManual);
-    jsonDoc["MOTOR_2_DIR_MANUAL"] = motorDirToStr(motor2DirManual);
-    jsonDoc["MOTOR_1_DUTY_CYCLE_MANUAL"] = dutyCycle1Manual;
-    jsonDoc["MOTOR_2_DUTY_CYCLE_MANUAL"] = dutyCycle2Manual;
+    jsonDoc["PID_Kp"] = status.pidKp;
+    jsonDoc["PID_Ki"] = status.pidKi;
+    jsonDoc["PID_Kd"] = status.pidKd;
+    jsonDoc["PID_setpoint"] = status.pitchSetpoint;
+    jsonDoc["pitch_angle_current"] = status.pitchCurrent;
+    jsonDoc["MOTOR_DUTY_CYCLE_MIN"] = status.dutyCycleMin;
+    jsonDoc["MOTOR_DUTY_CYCLE_MAX"] = status.dutyCycleMax;
+    jsonDoc["PITCH_ANGLE_ERROR_MAX"] = status.pitchErrorMax;
+    jsonDoc["PITCH_ANGLE_ERROR_MIN"] = status.pitchErrorMin;
+    jsonDoc["CONTROL_MODE"] = controlModeToStr(status.controlMode);
+    jsonDoc["MOTOR_1_DIR_MANUAL"] = motorDirToStr(status.motor1Direction);
+    jsonDoc["MOTOR_2_DIR_MANUAL"] = motorDirToStr(status.motor2Direction);
+    jsonDoc["MOTOR_1_DUTY_CYCLE_MANUAL"] = status.dutyCycle1Manual;
+    jsonDoc["MOTOR_2_DUTY_CYCLE_MANUAL"] = status.dutyCycle2Manual;
+    jsonDoc["ESTIMATES_VALID"] = status.estimatesValid;
+    jsonDoc["AUTO_ARM_ALLOWED"] = status.autoArmAllowed;
+    jsonDoc["AUTO_ARM_MAX_PITCH_ERROR"] = AUTO_ARM_MAX_PITCH_ERROR;
 
     String jsonString;
     serializeJson(jsonDoc, jsonString);
@@ -840,14 +1029,18 @@ void initWebserver() {
     jsonDoc["message"] = "Variable updated";
     jsonDoc["key"] = key;
     bool convertedSuccessfully {false};
+    bool commandRequired {false};
+    ControlCommand_t command {};
 
     if (key == "PID_Kp") {
       float temp;
       convertedSuccessfully = convertStringToFloat(value, temp);
 
       if (convertedSuccessfully) {
-        pid.kp = temp;
-        jsonDoc["value"] = pid.kp;
+        command.type = ControlCommandType::SET_PID_KP;
+        command.floatValue = temp;
+        commandRequired = true;
+        jsonDoc["value"] = temp;
       }
     }
     else if (key == "PID_Ki") {
@@ -855,8 +1048,10 @@ void initWebserver() {
       convertedSuccessfully = convertStringToFloat(value, temp);
 
       if (convertedSuccessfully) {
-        pid.ki = temp;
-        jsonDoc["value"] = pid.ki;
+        command.type = ControlCommandType::SET_PID_KI;
+        command.floatValue = temp;
+        commandRequired = true;
+        jsonDoc["value"] = temp;
       }
     }
     else if (key == "PID_Kd") {
@@ -864,17 +1059,23 @@ void initWebserver() {
       convertedSuccessfully = convertStringToFloat(value, temp);
 
       if (convertedSuccessfully) {
-        pid.kd = temp;
-        jsonDoc["value"] = pid.kd;
+        command.type = ControlCommandType::SET_PID_KD;
+        command.floatValue = temp;
+        commandRequired = true;
+        jsonDoc["value"] = temp;
       }
     }
     else if (key == "PID_setpoint") {
       float temp;
-      convertedSuccessfully = convertStringToFloat(value, temp) && (temp >= -25.) && (temp <= 25.);
+      convertedSuccessfully = convertStringToFloat(value, temp)
+          && (temp >= -25.0f * M_PI / 180.0f)
+          && (temp <= 25.0f * M_PI / 180.0f);
 
       if (convertedSuccessfully) {
-        pitch_angle_setpoint = temp;
-        jsonDoc["value"] = pitch_angle_setpoint;
+        command.type = ControlCommandType::SET_PID_SETPOINT;
+        command.floatValue = temp;
+        commandRequired = true;
+        jsonDoc["value"] = temp;
       }
     }
     else if (key == "MOTOR_DUTY_CYCLE_MIN") {
@@ -882,8 +1083,10 @@ void initWebserver() {
       convertedSuccessfully = convertStringToUint(value, temp) && (temp >= 0) && (temp <= 255);
 
       if (convertedSuccessfully) {
-        DUTY_CYCLE_MIN = temp;
-        jsonDoc["value"] = DUTY_CYCLE_MIN;
+        command.type = ControlCommandType::SET_DUTY_CYCLE_MIN;
+        command.uintValue = temp;
+        commandRequired = true;
+        jsonDoc["value"] = temp;
       }
     }
     else if (key == "MOTOR_DUTY_CYCLE_MAX") {
@@ -891,67 +1094,85 @@ void initWebserver() {
       convertedSuccessfully = convertStringToUint(value, temp) && (temp >= 0) && (temp <= 255);
 
       if (convertedSuccessfully) {
-        DUTY_CYCLE_MAX = temp;
-        jsonDoc["value"] = DUTY_CYCLE_MAX;
+        command.type = ControlCommandType::SET_DUTY_CYCLE_MAX;
+        command.uintValue = temp;
+        commandRequired = true;
+        jsonDoc["value"] = temp;
       }
     }
     else if (key == "PITCH_ANGLE_ERROR_MAX") {
       float temp;
-      convertedSuccessfully = convertStringToFloat(value, temp) && (temp >= 5.) && (temp <= 35.);
+      convertedSuccessfully = convertStringToFloat(value, temp)
+          && (temp >= 5.0f * M_PI / 180.0f)
+          && (temp <= 35.0f * M_PI / 180.0f);
 
       if (convertedSuccessfully) {
-        PITCH_ANGLE_ERROR_MAX = temp;
-        jsonDoc["value"] = PITCH_ANGLE_ERROR_MAX;
+        command.type = ControlCommandType::SET_PITCH_ERROR_MAX;
+        command.floatValue = temp;
+        commandRequired = true;
+        jsonDoc["value"] = temp;
       }
     }
     else if (key == "PITCH_ANGLE_ERROR_MIN") {
       float temp;
-      convertedSuccessfully = convertStringToFloat(value, temp) && (temp >= 0) && (temp <= 45.);
+      convertedSuccessfully = convertStringToFloat(value, temp)
+          && (temp >= 0.0f)
+          && (temp <= 45.0f * M_PI / 180.0f);
 
       if (convertedSuccessfully) {
-        PITCH_ANGLE_ERROR_MIN = temp;
-        jsonDoc["value"] = PITCH_ANGLE_ERROR_MIN;
+        command.type = ControlCommandType::SET_PITCH_ERROR_MIN;
+        command.floatValue = temp;
+        commandRequired = true;
+        jsonDoc["value"] = temp;
       }
     }
     else if (key == "CONTROL_MODE") {
       if (value == "AUTO") {
-        controlMode = ControlMode::AUTO;
         convertedSuccessfully = true;
-        jsonDoc["value"] = controlMode;
+        command.type = ControlCommandType::SET_CONTROL_MODE;
+        command.controlMode = ControlMode::AUTO;
+        commandRequired = true;
+        jsonDoc["value"] = "AUTO";
+        jsonDoc["message"] = "AUTO requested; confirm active mode in telemetry or /status";
       }
       else if (value == "MANUAL") {
-        motor1DirManual = MotorDirection::FORWARD;
-        motor2DirManual = MotorDirection::FORWARD;
-        dutyCycle1Manual = 0;
-        dutyCycle2Manual = 0;
-
-        controlMode = ControlMode::MANUAL;
         convertedSuccessfully = true;
-        jsonDoc["value"] = controlModeToStr(controlMode);
+        command.type = ControlCommandType::SET_CONTROL_MODE;
+        command.controlMode = ControlMode::MANUAL;
+        commandRequired = true;
+        jsonDoc["value"] = "MANUAL";
       }
     }
     else if (key == "MOTOR_1_DIR_MANUAL") {
       if (value == "FORWARD") {
-        motor1DirManual = MotorDirection::FORWARD;
         convertedSuccessfully = true;
-        jsonDoc["value"] = motorDirToStr(motor1DirManual);
+        command.type = ControlCommandType::SET_MOTOR1_DIRECTION;
+        command.motorDirection = MotorDirection::FORWARD;
+        commandRequired = true;
+        jsonDoc["value"] = "FORWARD";
       }
       else if (value == "REVERSE") {
-        motor1DirManual = MotorDirection::REVERSE;
         convertedSuccessfully = true;
-        jsonDoc["value"] = motorDirToStr(motor1DirManual);
+        command.type = ControlCommandType::SET_MOTOR1_DIRECTION;
+        command.motorDirection = MotorDirection::REVERSE;
+        commandRequired = true;
+        jsonDoc["value"] = "REVERSE";
       }
     }
     else if (key == "MOTOR_2_DIR_MANUAL") {
       if (value == "FORWARD") {
-        motor2DirManual = MotorDirection::FORWARD;
         convertedSuccessfully = true;
-        jsonDoc["value"] = motorDirToStr(motor2DirManual);
+        command.type = ControlCommandType::SET_MOTOR2_DIRECTION;
+        command.motorDirection = MotorDirection::FORWARD;
+        commandRequired = true;
+        jsonDoc["value"] = "FORWARD";
       }
       else if (value == "REVERSE") {
-        motor2DirManual = MotorDirection::REVERSE;
         convertedSuccessfully = true;
-        jsonDoc["value"] = motorDirToStr(motor2DirManual);
+        command.type = ControlCommandType::SET_MOTOR2_DIRECTION;
+        command.motorDirection = MotorDirection::REVERSE;
+        commandRequired = true;
+        jsonDoc["value"] = "REVERSE";
       }
     }
     else if (key == "MOTOR_1_DUTY_CYCLE_MANUAL") {
@@ -959,8 +1180,10 @@ void initWebserver() {
       convertedSuccessfully = convertStringToUint(value, temp) && (temp >= 0) && (temp <= 255);
 
       if (convertedSuccessfully) {
-        dutyCycle1Manual = temp;
-        jsonDoc["value"] = dutyCycle1Manual;
+        command.type = ControlCommandType::SET_MOTOR1_DUTY;
+        command.uintValue = temp;
+        commandRequired = true;
+        jsonDoc["value"] = temp;
       }
     }
     else if (key == "MOTOR_2_DUTY_CYCLE_MANUAL") {
@@ -968,14 +1191,17 @@ void initWebserver() {
       convertedSuccessfully = convertStringToUint(value, temp) && (temp >= 0) && (temp <= 255);
 
       if (convertedSuccessfully) {
-        dutyCycle2Manual = temp;
-        jsonDoc["value"] = dutyCycle2Manual;
+        command.type = ControlCommandType::SET_MOTOR2_DUTY;
+        command.uintValue = temp;
+        commandRequired = true;
+        jsonDoc["value"] = temp;
       }
     }
     else if (key == "EMERGENCY_STOP") {
-      stopMotors();
+      emergencyStopRequested.store(true);
       convertedSuccessfully = true;
-      jsonDoc["value"] = "";
+      jsonDoc["value"] = true;
+      jsonDoc["message"] = "Emergency stop requested";
     }
     else if (key == "START_LOGGING") {
       startLogging();
@@ -995,6 +1221,11 @@ void initWebserver() {
     if (!convertedSuccessfully) {
       request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid value type\"}");
       return;   // is this needed?
+    }
+
+    if (commandRequired && !enqueueControlCommand(command)) {
+      request->send(503, "application/json", "{\"status\":\"error\",\"message\":\"Control command queue full\"}");
+      return;
     }
 
     // Serialize JSON document to a string
@@ -1070,6 +1301,11 @@ void setup(){
   queueTelemetry = xQueueCreate(1, sizeof(TelemetryPacket_t));
   if (queueTelemetry == NULL) {
       Serial.println("Failed to create telemetry queue");
+      while (1);
+  }
+  queueControlCommands = xQueueCreate(16, sizeof(ControlCommand_t));
+  if (queueControlCommands == NULL) {
+      Serial.println("Failed to create control command queue");
       while (1);
   }
 
