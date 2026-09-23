@@ -44,10 +44,11 @@ const int PIN_MOTOR1_SLEEP = 42;
 const int PIN_MOTOR2_SLEEP = 41;
 const int PIN_MOTOR1_DIR = 40;
 const int PIN_MOTOR2_DIR = 39;
-const int PIN_ENCODER2A = 16;
-const int PIN_ENCODER2B = 15;
-const int PIN_ENCODER1A = 11;
-const int PIN_ENCODER1B = 12;
+// Keep encoder numbering aligned with the corresponding motor/PWM channel.
+const int PIN_ENCODER1A = 16;
+const int PIN_ENCODER1B = 15;
+const int PIN_ENCODER2A = 11;
+const int PIN_ENCODER2B = 12;
 const int PIN_MOTOR1_PWM = 35;
 const int PIN_MOTOR2_PWM = 45;
 const int PIN_I2C_SDA = 14;
@@ -112,9 +113,9 @@ MotorDirection motor2DirManual { MotorDirection::FORWARD };
 uint dutyCycle1Manual {0};                // motor 1 duty cycle when in manual mode
 uint dutyCycle2Manual {0};
 
-// ControlMode controlMode {MANUAL}; //AUTO};
-// ControlMode controlMode {FUNCTION}; //AUTO};
-ControlMode controlMode {AUTO};
+// Always boot disarmed. AUTO must be selected explicitly after calibration and
+// the live state estimate have been checked.
+ControlMode controlMode {MANUAL};
 uint DUTY_CYCLE_MIN = 15;
 uint DUTY_CYCLE_MAX = 253;      // conservative for now. Can be as high as 255
 float PITCH_ANGLE_ERROR_MAX = 25.f*M_PI/180.f;   // maximum pitch angle error before motors cut off
@@ -252,8 +253,6 @@ void taskEstimateState(void * parameter) {
 
             pitchAngleEst = ALPHA * (pitchAngleEst + deltaPitchAngleGyro) + (1-ALPHA) * pitchAngleAccel;   // [rad]
 
-            pcnt_get_counter_value(PCNT_UNIT, &pcnt_encoder_pulse_count);
-
             // calculate angular velocity of each wheel
             wheel_velocity_estimator_step_count--;
             if (wheel_velocity_estimator_step_count == 0)
@@ -270,12 +269,12 @@ void taskEstimateState(void * parameter) {
             // stateEstimatePacket.pitch_accel = pitchAngleAccel;
             // stateEstimatePacket.pitch_gyro = pitchAngleGyro;
             stateEstimatePacket.pitch_est = pitchAngleEst;
-            stateEstimatePacket.motor1EncoderPulses = pcnt_encoder_pulse_count; //motor1EncoderPulses;
-            stateEstimatePacket.motor1EncoderPulsesDelta = 0; //motor1EncoderPulsesDelta;
+            stateEstimatePacket.motor1EncoderPulses = motor1EncoderPulses;
+            stateEstimatePacket.motor1EncoderPulsesDelta = motor1EncoderPulsesDelta;
             // stateEstimatePacket.motor1DistanceMeas = motor1EncoderPulses * DISTANCE_PER_PULSE;
             // stateEstimatePacket.motor1DirMeas = static_cast<signed char>(motor1DirMeas);
-            stateEstimatePacket.motor2EncoderPulses = 0; //motor2EncoderPulses;
-            stateEstimatePacket.motor2EncoderPulsesDelta = 0; //motor2EncoderPulsesDelta;
+            stateEstimatePacket.motor2EncoderPulses = motor2EncoderPulses;
+            stateEstimatePacket.motor2EncoderPulsesDelta = motor2EncoderPulsesDelta;
             // stateEstimatePacket.motor2DistanceMeas = motor2EncoderPulses * DISTANCE_PER_PULSE;
             // stateEstimatePacket.motor2DirMeas = static_cast<signed char>(motor2DirMeas);
             stateEstimatePacket.pitch_velocity_gyro = pitchAngularVelocityGyro;
@@ -594,21 +593,13 @@ void init_pcnt() {
     delay(10);
 }
 
-// void handleMotor1EncoderA() {
-//   // Read the state of channel B
-//   int stateB = digitalRead(PIN_ENCODER1B);
-
-//   // Determine the direction
-//   if (digitalRead(PIN_ENCODER1A) == HIGH) {
-//     motor1DirMeas = (stateB == LOW) ? 1 : -1; // Forward if B is LOW, backward if B is HIGH
-//   } else {
-//     motor1DirMeas = (stateB == HIGH) ? 1 : -1; // Forward if B is HIGH, backward if B is LOW
-//   }
-
-//   // Update pulse count
-//   motor1EncoderPulses += motor1DirMeas;
-
-// }
+void IRAM_ATTR handleMotor1EncoderA() {
+  // Channel B determines direction whenever channel A changes state.
+  const int stateA = digitalRead(PIN_ENCODER1A);
+  const int stateB = digitalRead(PIN_ENCODER1B);
+  motor1DirMeas = stateA == stateB ? -1 : 1;
+  motor1EncoderPulses += motor1DirMeas;
+}
 
 // void handleMotor1EncoderB() {
 //   // Read the state of channel A
@@ -625,18 +616,11 @@ void init_pcnt() {
 //   motor1EncoderPulses += motor1DirMeas;
 // }
 
-void handleMotor2EncoderA() {
-  // Read the state of channel B
-  int stateB = digitalRead(PIN_ENCODER2B);
-
-  // Determine the direction
-  if (digitalRead(PIN_ENCODER2A) == HIGH) {
-    motor2DirMeas = (stateB == LOW) ? 1 : -1; // Forward if B is LOW, backward if B is HIGH
-  } else {
-    motor2DirMeas = (stateB == HIGH) ? 1 : -1; // Forward if B is HIGH, backward if B is LOW
-  }
-
-  // Update pulse count
+void IRAM_ATTR handleMotor2EncoderA() {
+  // Channel B determines direction whenever channel A changes state.
+  const int stateA = digitalRead(PIN_ENCODER2A);
+  const int stateB = digitalRead(PIN_ENCODER2B);
+  motor2DirMeas = stateA == stateB ? -1 : 1;
   motor2EncoderPulses += motor2DirMeas;
 }
 
@@ -1130,13 +1114,13 @@ void setup(){
   ledcAttachPin(PIN_MOTOR2_PWM, MOTOR2_PWM_CHANNEL);
 //   ledcAttachPin(PIN_LED_PWM, MOTOR1_PWM_CHANNEL);
 
-  // Set encoder pins as inputs
-  init_pcnt();
-  // pinMode(PIN_ENCODER1A, INPUT);
-  // pinMode(PIN_ENCODER1B, INPUT);
+  // Count both edges of channel A and read channel B to determine direction.
+  // ENCODER_PULSES_PER_REVOLUTION is defined for this 2x decoding scheme.
+  pinMode(PIN_ENCODER1A, INPUT);
+  pinMode(PIN_ENCODER1B, INPUT);
   pinMode(PIN_ENCODER2A, INPUT);
   pinMode(PIN_ENCODER2B, INPUT);
-  // attachInterrupt(digitalPinToInterrupt(PIN_ENCODER1A), handleMotor1EncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER1A), handleMotor1EncoderA, CHANGE);
   // attachInterrupt(digitalPinToInterrupt(PIN_ENCODER1B), handleMotor1EncoderB, CHANGE);   // use only half the possible pules for now, since angular resolution should be sufficient
   attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2A), handleMotor2EncoderA, CHANGE);
   // attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2B), handleMotor2EncoderB, CHANGE);

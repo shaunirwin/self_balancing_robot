@@ -16,6 +16,19 @@
 #define SERIAL_PORT "/dev/ttyACM0"  // Adjust this to your serial device
 #define BAUDRATE B115200
 
+const char* controlModeToString(const ControlMode mode) {
+    switch (mode) {
+        case ControlMode::AUTO:
+            return "AUTO";
+        case ControlMode::MANUAL:
+            return "MANUAL";
+        case ControlMode::FUNCTION:
+            return "FUNCTION";
+        default:
+            return "UNKNOWN";
+    }
+}
+
 
 
 // typedef struct {
@@ -237,6 +250,15 @@ int readSerial(int fd, bool logToCSV, std::string csvPath) {
 
                     if (packetsReceived % 1 == 0) {
                         std::cout << "Received message: " << header.packetID << ", " << (int) (header.microSecondsSinceBoot / 1e6) << "sec (" << std::setprecision(3) << std::setfill('0') << (1.f/timeDeltaSec) << "Hz):" << 
+                        " mode " << controlModeToString(data.control.controlMode) << ", " <<
+                        "valid " << static_cast<int>(data.state.estimatesValid) << ", " <<
+                        std::fixed << std::setprecision(2) <<
+                        "pitch " << data.state.pitch_est * 180. / M_PI << " deg, " <<
+                        "gyro " << data.state.pitch_velocity_gyro * 180. / M_PI << " deg/s, " <<
+                        "PWM M1 " << static_cast<int>(data.control.motorOutput.dutyCycle1) <<
+                        " M2 " << static_cast<int>(data.control.motorOutput.dutyCycle2Calibrated) <<
+                        " (dir pins " << static_cast<int>(data.control.motorOutput.motor1dir) <<
+                        "," << static_cast<int>(data.control.motorOutput.motor2dir) << "), " <<
                         data.state.motor1EncoderPulses << " M1 pulses (" << std::round(motor1PulsesPerSec) << " pulses/sec), " << 
                         data.state.motor2EncoderPulses << " M2 pulses (" << std::round(motor2PulsesPerSec) << " pulses/sec), " << 
                         "control dt " << data.controlTiming.interval_us << " us, " <<
