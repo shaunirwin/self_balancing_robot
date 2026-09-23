@@ -199,10 +199,17 @@ void taskEstimateState(void * parameter) {
     long motor2EncoderPulsesDelta = 0;
     uint txCount = 0;    // used for keeping track of frequency of transmitting over serial
     const uint TX_PERIOD = 1; //10;
+    int64_t previousIMUSampleTimeUs = 0;
 
     for (;;) {
         // Wait until data is available in the queue
         if (xQueueReceive(queueIMU, &imuPacket, portMAX_DELAY) == pdPASS) {
+
+            const int64_t imuSampleTimeUs = esp_timer_get_time();
+            const float elapsedTime = previousIMUSampleTimeUs == 0
+                ? 0.0f
+                : static_cast<float>(imuSampleTimeUs - previousIMUSampleTimeUs) * 1e-6f;  // [s]
+            previousIMUSampleTimeUs = imuSampleTimeUs;
 
             const float pitchAngleAccelRaw = atan2(imuPacket.ax, imuPacket.az);            // [rad]
             
@@ -221,11 +228,12 @@ void taskEstimateState(void * parameter) {
             const float pitchAngleAccel = pitchAngleAccelRaw - pitchAccelOffset;
 
             const float pitchAngularRateGyro = imuPacket.gy - gyroOffsetY;          // [rad/s]
-            const float deltaAngularRateGyro = -pitchAngularRateGyro / ESTIMATOR_FREQ;
+            const float pitchAngularVelocityGyro = -pitchAngularRateGyro;            // [rad/s]
+            const float deltaPitchAngleGyro = pitchAngularVelocityGyro * elapsedTime; // [rad]
 
-            pitchAngleGyro += deltaAngularRateGyro;
+            pitchAngleGyro += deltaPitchAngleGyro;
 
-            pitchAngleEst = ALPHA * (pitchAngleEst + deltaAngularRateGyro) + (1-ALPHA) * pitchAngleAccel;   // [rad]
+            pitchAngleEst = ALPHA * (pitchAngleEst + deltaPitchAngleGyro) + (1-ALPHA) * pitchAngleAccel;   // [rad]
 
             pcnt_get_counter_value(PCNT_UNIT, &pcnt_encoder_pulse_count);
 
@@ -253,7 +261,7 @@ void taskEstimateState(void * parameter) {
             stateEstimatePacket.motor2EncoderPulsesDelta = 0; //motor2EncoderPulsesDelta;
             // stateEstimatePacket.motor2DistanceMeas = motor2EncoderPulses * DISTANCE_PER_PULSE;
             // stateEstimatePacket.motor2DirMeas = static_cast<signed char>(motor2DirMeas);
-            stateEstimatePacket.pitch_velocity_gyro = deltaAngularRateGyro;   // TODO: should it be -pitchAngularRateGyro instead?
+            stateEstimatePacket.pitch_velocity_gyro = pitchAngularVelocityGyro;
             stateEstimatePacket.estimatesValid = gyroOffsetCalculated;  // valid once IMU readings calibrated
             
             txCount ++;
@@ -1142,4 +1150,3 @@ void loop() {
   // delay(2000);
 
 }
-
