@@ -28,6 +28,23 @@ pio run
 
 Plug the USB cable into the **right** USB slot on the ESP32-S3 WROOM Freenove board to program it and to send/receive serial communication, as shown in (this)[https://www.youtube.com/watch?v=VZDCkARFCPk&ab_channel=Freenove] video.
 
+From the repository root, build and upload the firmware with:
+
+```bash
+cd electronics/code/platformio_projects/self_balancing_robot
+~/.platformio/penv/bin/pio run --target upload
+```
+
+This uses `/dev/ttyACM0`, as configured in `platformio.ini`.
+
+To open PlatformIO's serial monitor after uploading:
+
+```bash
+~/.platformio/penv/bin/pio device monitor
+```
+
+Press `Ctrl+C` to exit the monitor.
+
 ## To receive serial communication
 
 In the terminal:
