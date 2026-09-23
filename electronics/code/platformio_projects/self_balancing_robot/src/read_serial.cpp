@@ -116,24 +116,19 @@ int configureSerial(const char* port) {
         return -1;
     }
 
+    // Disable all terminal input/output translations so arbitrary binary packet
+    // bytes arrive unchanged.
+    cfmakeraw(&tty);
+
     // Set baud rate
     cfsetispeed(&tty, BAUDRATE);
     cfsetospeed(&tty, BAUDRATE);
 
-    // Configure for raw mode
-    tty.c_cflag &= ~PARENB;        // No parity bit
-    tty.c_cflag &= ~CSTOPB;        // One stop bit
-    tty.c_cflag &= ~CSIZE;         
-    tty.c_cflag |= CS8;            // 8-bit characters
-    // tty.c_cflag &= ~CRTSCTS;       // No hardware flow control
-    tty.c_cflag |= CREAD | CLOCAL; // Enable reading & ignore modem control lines
+    tty.c_cflag &= ~(PARENB | CSTOPB | CSIZE | HUPCL);
+    tty.c_cflag |= CS8 | CREAD | CLOCAL;
 
-    tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG); // Raw mode (disable canonical, echo, signals)
-    tty.c_iflag &= ~(IXON | IXOFF | IXANY | ICRNL); // Disable flow control and newline translation
-    tty.c_oflag &= ~OPOST;         // Disable output processing
-
-    tty.c_cc[VMIN] = 1;            // Minimum 1 character per read
-    tty.c_cc[VTIME] = 1;           // Timeout for read in tenths of a second
+    tty.c_cc[VMIN] = 1;
+    tty.c_cc[VTIME] = 0;
 
     // Apply the settings
     if (tcsetattr(fd, TCSANOW, &tty) != 0) {

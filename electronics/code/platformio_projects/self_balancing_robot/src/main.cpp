@@ -507,13 +507,30 @@ void taskControlMotors(void * parameter) {
 
 void taskTransmitTelemetry(void * parameter) {
   TelemetryPacket_t telemetryPacket;
+  constexpr size_t telemetryFrameSize = 1 + sizeof(TelemetryPacket_t) + 1;
+  uint8_t telemetryFrame[telemetryFrameSize];
 
   for (;;) {
     if (xQueueReceive(queueTelemetry, &telemetryPacket, portMAX_DELAY) == pdPASS) {
-      Serial.write(STX);
-      Serial.write(reinterpret_cast<const uint8_t *>(&telemetryPacket.header), sizeof(telemetryPacket.header));
-      Serial.write(reinterpret_cast<const uint8_t *>(&telemetryPacket.data), sizeof(telemetryPacket.data));
-      Serial.write(ETX);
+      size_t frameOffset = 0;
+      telemetryFrame[frameOffset++] = static_cast<uint8_t>(STX);
+      memcpy(telemetryFrame + frameOffset, &telemetryPacket, sizeof(telemetryPacket));
+      frameOffset += sizeof(telemetryPacket);
+      telemetryFrame[frameOffset] = static_cast<uint8_t>(ETX);
+
+      // Normally this completes in one call. If the USB driver accepts only part
+      // of the frame, finish that same frame before taking another queue item.
+      size_t bytesWritten = 0;
+      while (bytesWritten < telemetryFrameSize) {
+        const size_t writeCount = Serial.write(
+            telemetryFrame + bytesWritten,
+            telemetryFrameSize - bytesWritten);
+        if (writeCount == 0) {
+          vTaskDelay(pdMS_TO_TICKS(1));
+          continue;
+        }
+        bytesWritten += writeCount;
+      }
     }
   }
 }
