@@ -7,6 +7,9 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
+#include <Base64.h>
+#include "driver/pcnt.h"
+// #include "driver/pulse_cnt.h"
 
 // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
 // for both classes must be in the include path of your project
@@ -14,6 +17,9 @@
 #include "MPU6050.h"
 
 #include "data_structs.h"
+
+// #include "sd_read_write.h"
+// #include "SD_MMC.h"
 
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
@@ -26,6 +32,11 @@
 
 MPU6050 imu;
 AsyncWebServer server(80);
+
+// // NB: it looks like these correspond to pin numbers, rather than GPIO numbers (therefore GPIOs 32, 33, 34)
+// #define SD_MMC_CMD 38 //Please do not modify it.
+// #define SD_MMC_CLK 39 //Please do not modify it. 
+// #define SD_MMC_D0  40 //Please do not modify it.
 
 const int PIN_LED_PWM = 2;
 const int PIN_MOTOR1_SLEEP = 42;
@@ -40,6 +51,8 @@ const int PIN_MOTOR1_PWM = 35;
 const int PIN_MOTOR2_PWM = 45;
 const int PIN_I2C_SDA = 14;
 const int PIN_I2C_SCL = 13;
+// const int PIN_PULSE_INPUT = 11;   // testing PCNT module for wheel encoder position/speed measurement
+const auto PCNT_UNIT = PCNT_UNIT_0;
 
 const int PWM_FREQ = 30000;         // frequency to run PWM at [Hz]
 const int MOTOR1_PWM_CHANNEL = 0;   // set the PWM channel
@@ -53,6 +66,8 @@ const bool MOTOR_COAST = false;
 bool ledStatus = true;
 
 // state estimation
+int16_t pcnt_encoder_pulse_count;  // for PCNT module
+uint32_t intr_status;       // for PCNT module
 volatile signed long motor1EncoderPulses = 0;
 volatile int motor1DirMeas = 0;   // 0: stopped, 1: forward, -1: backward
 volatile signed long motor2EncoderPulses = 0;
@@ -80,6 +95,8 @@ MotorDirection motor2DirManual { MotorDirection::FORWARD };
 uint dutyCycle1Manual {0};                // motor 1 duty cycle when in manual mode
 uint dutyCycle2Manual {0};
 
+// ControlMode controlMode {MANUAL}; //AUTO};
+// ControlMode controlMode {FUNCTION}; //AUTO};
 ControlMode controlMode {AUTO};
 uint DUTY_CYCLE_MIN = 15;
 uint DUTY_CYCLE_MAX = 253;      // conservative for now. Can be as high as 255
@@ -106,8 +123,12 @@ const long NUM_LOG_PACKETS = 30 * ESTIMATOR_FREQ; // log duration [s] * packets/
 LogPacket_t logPackets[NUM_LOG_PACKETS];
 bool enableLogging = false;
 uint logIndex = 0;
+// DataLogger dataLogger();
+
 // PID controller
 PropIntDiff pid(-1.f, 1.f, 1.f);
+
+
 
 void IRAM_ATTR stateEstimatorTimer(){
   // Give the semaphore to unblock the task
@@ -206,6 +227,8 @@ void taskEstimateState(void * parameter) {
 
             pitchAngleEst = ALPHA * (pitchAngleEst + deltaAngularRateGyro) + (1-ALPHA) * pitchAngleAccel;   // [rad]
 
+            pcnt_get_counter_value(PCNT_UNIT, &pcnt_encoder_pulse_count);
+
             // calculate angular velocity of each wheel
             wheel_velocity_estimator_step_count--;
             if (wheel_velocity_estimator_step_count == 0)
@@ -222,12 +245,12 @@ void taskEstimateState(void * parameter) {
             // stateEstimatePacket.pitch_accel = pitchAngleAccel;
             // stateEstimatePacket.pitch_gyro = pitchAngleGyro;
             stateEstimatePacket.pitch_est = pitchAngleEst;
-            stateEstimatePacket.motor1EncoderPulses = motor1EncoderPulses;
-            stateEstimatePacket.motor1EncoderPulsesDelta = motor1EncoderPulsesDelta;
+            stateEstimatePacket.motor1EncoderPulses = pcnt_encoder_pulse_count; //motor1EncoderPulses;
+            stateEstimatePacket.motor1EncoderPulsesDelta = 0; //motor1EncoderPulsesDelta;
             // stateEstimatePacket.motor1DistanceMeas = motor1EncoderPulses * DISTANCE_PER_PULSE;
             // stateEstimatePacket.motor1DirMeas = static_cast<signed char>(motor1DirMeas);
-            stateEstimatePacket.motor2EncoderPulses = motor2EncoderPulses;
-            stateEstimatePacket.motor2EncoderPulsesDelta = motor2EncoderPulsesDelta;
+            stateEstimatePacket.motor2EncoderPulses = 0; //motor2EncoderPulses;
+            stateEstimatePacket.motor2EncoderPulsesDelta = 0; //motor2EncoderPulsesDelta;
             // stateEstimatePacket.motor2DistanceMeas = motor2EncoderPulses * DISTANCE_PER_PULSE;
             // stateEstimatePacket.motor2DirMeas = static_cast<signed char>(motor2DirMeas);
             stateEstimatePacket.pitch_velocity_gyro = deltaAngularRateGyro;   // TODO: should it be -pitchAngularRateGyro instead?
@@ -248,18 +271,20 @@ void taskEstimateState(void * parameter) {
               pitchAngleCalcPacket.pitchGyro = pitchAngleGyro;
               pitchAngleCalcPacket.pitchEst = pitchAngleEst;
 
-              DataPacket_t dataPacket;
-              dataPacket.imu = imuPacket;
-              dataPacket.pitchInfo = pitchAngleCalcPacket;
-              dataPacket.state = stateEstimatePacket;
+              // DataPacket_t dataPacket;
+              // dataPacket.imu = imuPacket;
+              // dataPacket.pitchInfo = pitchAngleCalcPacket;
+              // dataPacket.state = stateEstimatePacket;
 
-              Serial.write(STX);
-              Serial.write( (uint8_t *) &packetHeader, sizeof( packetHeader ) );
-              Serial.write( (uint8_t *) &dataPacket, sizeof( dataPacket ) );
-              Serial.write(ETX);
+              // Serial.write(STX);
+              // Serial.write( (uint8_t *) &packetHeader, sizeof( packetHeader ) );
+              // Serial.write( (uint8_t *) &dataPacket, sizeof( dataPacket ) );
+              // Serial.write(ETX);
+
+              // appendFile(SD_MMC, "/data_log.bin", "World!\n");
 
               txCount = 0;
-              packetID += 1;
+              // packetID += 1;
             }
 
             if (xQueueSend(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) != pdPASS) {
@@ -354,6 +379,12 @@ ManualControlPacket_t stepMotors(const uint dutyCycleMin, const uint dutyCycleMa
 
   p.dutyCycle2 = p.dutyCycle1;
 
+  // if (changeDir && packetID % period == 0) {
+  //   p.motor1dir = !p.motor1dir;
+  // }
+
+  // p.motor2dir = p.motor1dir;
+
   return p;
 }
 
@@ -375,6 +406,8 @@ void taskControlMotors(void * parameter) {
       if (controlMode == ControlMode::FUNCTION) {
         // turn the motors on and off with given period
         controlPacket.manual = stepMotors(0, 255, 2000, 0);
+
+        // controlPacket.manual.dutyCycle1 = 100; // TODO: testing
       }
 
       uint dutyCycle1 = controlPacket.manual.dutyCycle1;
@@ -395,6 +428,25 @@ void taskControlMotors(void * parameter) {
 
       controlPacket.motorOutput = 
         calcMotorOutput(motor1dir, motor2dir, dutyCycle1, dutyCycle2, stateEstimatePacket.estimatesValid);
+
+      
+      PacketHeader_t packetHeader;
+      packetHeader.packetID = packetID;
+      packetHeader.microSecondsSinceBoot = esp_timer_get_time();
+      
+      DataPacket_t dataPacket;
+      // dataPacket.imu = imuPacket;
+      // dataPacket.pitchInfo = pitchAngleCalcPacket;
+      dataPacket.state = stateEstimatePacket;
+      dataPacket.control = controlPacket;
+
+      Serial.write(STX);
+      Serial.write( (uint8_t *) &packetHeader, sizeof( packetHeader ) );
+      Serial.write( (uint8_t *) &dataPacket, sizeof( dataPacket ) );
+      Serial.write(ETX);
+
+      packetID ++;
+
       ledcWrite(MOTOR1_PWM_CHANNEL, controlPacket.motorOutput.dutyCycle1);
       ledcWrite(MOTOR2_PWM_CHANNEL, controlPacket.motorOutput.dutyCycle2Calibrated);
       digitalWrite(PIN_MOTOR1_DIR, controlPacket.motorOutput.motor1dir);
@@ -405,11 +457,11 @@ void taskControlMotors(void * parameter) {
         if (logIndex == NUM_LOG_PACKETS) {
           stopLogging();
         }
-        logPackets[logIndex].pitch_current = pitch_angle_current;
-        logPackets[logIndex].pitch_gyro = pitchAngleGyro;
-        logPackets[logIndex].dutyCycle1 = dutyCycle1;
-        logPackets[logIndex].motorDir1 = motor1dirActual;
-        logPackets[logIndex].motorSpeed = pid.Output;
+        // logPackets[logIndex].pitch_current = pitch_angle_current;
+        // logPackets[logIndex].pitch_gyro = pitchAngleGyro;
+        // logPackets[logIndex].dutyCycle1 = dutyCycle1;
+        // logPackets[logIndex].motorDir1 = motor1dirActual;
+        // logPackets[logIndex].motorSpeed = pid.Output;
 
         logIndex ++;
       }
@@ -417,36 +469,81 @@ void taskControlMotors(void * parameter) {
   }
 }
 
-void handleMotor1EncoderA() {
-  // Read the state of channel B
-  int stateB = digitalRead(PIN_ENCODER1B);
+// wheel encoder interrupts
 
-  // Determine the direction
-  if (digitalRead(PIN_ENCODER1A) == HIGH) {
-    motor1DirMeas = (stateB == LOW) ? 1 : -1; // Forward if B is LOW, backward if B is HIGH
-  } else {
-    motor1DirMeas = (stateB == HIGH) ? 1 : -1; // Forward if B is HIGH, backward if B is LOW
-  }
+void init_pcnt() {
+  pcnt_config_t pcnt_config = {
+        // .pulse_gpio_num = PIN_ENCODER1A,
+        .ctrl_gpio_num = PCNT_PIN_NOT_USED, //,
+        .lctrl_mode = PCNT_MODE_KEEP,  // KEEP, REVERSE, DISABLE, MAX: Control mode when control signal is low
+        .hctrl_mode = PCNT_MODE_KEEP,  // KEEP, REVERSE, DISABLE, MAX: Control mode when control signal is high
+        .pos_mode = PCNT_COUNT_INC,  // Count up on the positive edge
+        .neg_mode = PCNT_COUNT_DIS,  // INC, DIS, KEEP: Do nothing on negative edge.
+        .counter_h_lim = 16384,  // Maximum count value
+        .counter_l_lim = 0, // Minimum count value
+        .unit = PCNT_UNIT,  // PCNT unit
+        .channel = PCNT_CHANNEL_0
+    };
 
-  // Update pulse count
-  motor1EncoderPulses += motor1DirMeas;
+    // Initialize PCNT unit
+    pcnt_unit_config(&pcnt_config);
 
+    // pcnt_chan_config_t chan_a_config = {
+    //     .edge_gpio_num = PIN_ENCODER1A, // EXAMPLE_EC11_GPIO_A,
+    //     .level_gpio_num = PIN_ENCODER1B // EXAMPLE_EC11_GPIO_B,
+    // };
+    // pcnt_channel_handle_t pcnt_chan_a = NULL;
+    // ESP_ERROR_CHECK(pcnt_new_channel(pcnt_unit, &chan_a_config, &pcnt_chan_a));
+    // pcnt_chan_config_t chan_b_config = {
+    //     .edge_gpio_num = PIN_ENCODER1B, //EXAMPLE_EC11_GPIO_B,
+    //     .level_gpio_num = PIN_ENCODER1A //EXAMPLE_EC11_GPIO_A,
+    // };
+    // pcnt_channel_handle_t pcnt_chan_b = NULL;
+    // ESP_ERROR_CHECK(pcnt_new_channel(pcnt_unit, &chan_b_config, &pcnt_chan_b));
+
+    // Set the filter value for the pulse input
+    pcnt_set_filter_value(PCNT_UNIT, 10);
+    pcnt_filter_enable(PCNT_UNIT);
+
+    pcnt_counter_pause(PCNT_UNIT);
+    pcnt_counter_clear(PCNT_UNIT);
+
+    // Start counting
+    pcnt_counter_resume(PCNT_UNIT);
+
+    delay(10);
 }
 
-void handleMotor1EncoderB() {
-  // Read the state of channel A
-  int stateA = digitalRead(PIN_ENCODER1A);
+// void handleMotor1EncoderA() {
+//   // Read the state of channel B
+//   int stateB = digitalRead(PIN_ENCODER1B);
 
-  // Determine the direction
-  if (digitalRead(PIN_ENCODER1B) == HIGH) {
-    motor1DirMeas = (stateA == HIGH) ? 1 : -1; // Forward if A is HIGH, backward if A is LOW
-  } else {
-    motor1DirMeas = (stateA == LOW) ? 1 : -1; // Forward if A is LOW, backward if A is HIGH
-  }
+//   // Determine the direction
+//   if (digitalRead(PIN_ENCODER1A) == HIGH) {
+//     motor1DirMeas = (stateB == LOW) ? 1 : -1; // Forward if B is LOW, backward if B is HIGH
+//   } else {
+//     motor1DirMeas = (stateB == HIGH) ? 1 : -1; // Forward if B is HIGH, backward if B is LOW
+//   }
 
-  // Update pulse count
-  motor1EncoderPulses += motor1DirMeas;
-}
+//   // Update pulse count
+//   motor1EncoderPulses += motor1DirMeas;
+
+// }
+
+// void handleMotor1EncoderB() {
+//   // Read the state of channel A
+//   int stateA = digitalRead(PIN_ENCODER1A);
+
+//   // Determine the direction
+//   if (digitalRead(PIN_ENCODER1B) == HIGH) {
+//     motor1DirMeas = (stateA == HIGH) ? 1 : -1; // Forward if A is HIGH, backward if A is LOW
+//   } else {
+//     motor1DirMeas = (stateA == LOW) ? 1 : -1; // Forward if A is LOW, backward if A is HIGH
+//   }
+
+//   // Update pulse count
+//   motor1EncoderPulses += motor1DirMeas;
+// }
 
 void handleMotor2EncoderA() {
   // Read the state of channel B
@@ -565,6 +662,8 @@ MotorDirection strToMotorDir(String str) {
 
 
 void initWebserver() {
+    // server.setTimeout(60); // Set timeout to 60 seconds
+
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     // Create a JSON document
     JsonDocument jsonDoc;
@@ -606,13 +705,44 @@ void initWebserver() {
     // stop logging before getting the data
     stopLogging();
 
-    JsonDocument jsonDoc;
-    // (uint8_t *) &microSecondsSinceBoot, sizeof( microSecondsSinceBoot )
-    jsonDoc["data"] = JsonString{(char *) &logPackets, sizeof(logPackets)};
-    jsonDoc["num_packets_logged"] = logIndex;
 
+
+    // Calculate the size of the byte array
+    const size_t numPackets = sizeof(logPackets) / sizeof(LogPacket_t);
+    const size_t packetSize = sizeof(LogPacket_t);
+    const size_t byteArraySize = numPackets * packetSize;
+
+    // Convert the array of structs to a byte array
+    // uint8_t byteArray[byteArraySize];
+    char byteArray[byteArraySize];
+    memcpy(byteArray, logPackets, byteArraySize);
+
+    // Encode the byte array to a base64 string
+    char base64Str[Base64.encodedLength(byteArraySize)];
+    Base64.encode(base64Str, byteArray, byteArraySize);
+
+    // Create a JSON document
+    JsonDocument jsonDoc;
+    jsonDoc["data"] = base64Str;
+    jsonDoc["num_packets_logged"] = logIndex;
+    jsonDoc["num_bytes_logged"] = sizeof(logPackets);
+
+    // Convert JSON document to string
     String jsonString;
     serializeJson(jsonDoc, jsonString);
+
+
+
+
+
+    // JsonDocument jsonDoc;
+    // (uint8_t *) &microSecondsSinceBoot, sizeof( microSecondsSinceBoot )
+    // jsonDoc["data"] = JsonString{(char *) &logPackets, sizeof(logPackets)};
+    // jsonDoc["num_packets_logged"] = logIndex;
+    // jsonDoc["num_bytes_logged"] = sizeof(logPackets);
+
+    // String jsonString;
+    // serializeJson(jsonDoc, jsonString);
 
     // Send JSON response
     request->send(200, "application/json", jsonString);
@@ -815,6 +945,33 @@ void initWebserver() {
   // Start the server
   server.begin();
 }
+
+// void sdCardSetup() {
+//   SD_MMC.setPins(SD_MMC_CLK, SD_MMC_CMD, SD_MMC_D0);
+//     if (!SD_MMC.begin("/sdcard", true, true, SDMMC_FREQ_DEFAULT, 5)) {
+//       Serial.println("Card Mount Failed");
+//       return;
+//     }
+//     uint8_t cardType = SD_MMC.cardType();
+//     if(cardType == CARD_NONE){
+//         Serial.println("No SD_MMC card attached");
+//         return;
+//     }
+
+//     Serial.print("SD_MMC Card Type: ");
+//     if(cardType == CARD_MMC){
+//         Serial.println("MMC");
+//     } else if(cardType == CARD_SD){
+//         Serial.println("SDSC");
+//     } else if(cardType == CARD_SDHC){
+//         Serial.println("SDHC");
+//     } else {
+//         Serial.println("UNKNOWN");
+//     }
+
+//     uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
+//     Serial.printf("SD_MMC Card Size: %lluMB\n", cardSize);
+// }
  
 void setup(){
   Serial.begin(115200);
@@ -872,6 +1029,7 @@ void setup(){
   digitalWrite(PIN_MOTOR1_SLEEP, !MOTOR_COAST);
   digitalWrite(PIN_MOTOR2_SLEEP, !MOTOR_COAST);
 
+  // is ledc the best way to do PWM on the ESP32? Should we not use MCPWM, since that is for motor control?
   ledcSetup(MOTOR1_PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);  // define the PWM Setup
   ledcSetup(MOTOR2_PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);
   ledcAttachPin(PIN_MOTOR1_PWM, MOTOR1_PWM_CHANNEL);
@@ -879,20 +1037,35 @@ void setup(){
 //   ledcAttachPin(PIN_LED_PWM, MOTOR1_PWM_CHANNEL);
 
   // Set encoder pins as inputs
-  pinMode(PIN_ENCODER1A, INPUT);
-  pinMode(PIN_ENCODER1B, INPUT);
+  init_pcnt();
+  // pinMode(PIN_ENCODER1A, INPUT);
+  // pinMode(PIN_ENCODER1B, INPUT);
   pinMode(PIN_ENCODER2A, INPUT);
   pinMode(PIN_ENCODER2B, INPUT);
-  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER1A), handleMotor1EncoderA, CHANGE);
+  // attachInterrupt(digitalPinToInterrupt(PIN_ENCODER1A), handleMotor1EncoderA, CHANGE);
   // attachInterrupt(digitalPinToInterrupt(PIN_ENCODER1B), handleMotor1EncoderB, CHANGE);   // use only half the possible pules for now, since angular resolution should be sufficient
   attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2A), handleMotor2EncoderA, CHANGE);
   // attachInterrupt(digitalPinToInterrupt(PIN_ENCODER2B), handleMotor2EncoderB, CHANGE);
 
   // PID constants
-  pid.kp = 3.0;
+  pid.kp = 18.0;
   pid.ki = 0.0;
-  pid.kd = 0.0;
+  pid.kd = 0.4;
   pid.inAuto = true;
+
+  // initialise storage file
+  // sdCardSetup();
+  // deleteFile(SD_MMC, "/data_log.bin");
+
+  // logPackets[0].pitch_current = 7.f;    // TODO: testing
+
+  for (uint i = 0; i < NUM_LOG_PACKETS; i++) {    // TODO: testing
+    logPackets[i].pitch_current = 7.f;
+    logPackets[i].pitch_gyro = 8.f;
+    logPackets[i].motorSpeed = 9.f;
+    logPackets[i].motorDir1 = 2;
+    logPackets[i].dutyCycle1 = 3;
+  }
 
   // initWiFi();
   // initWebserver();
@@ -938,17 +1111,35 @@ void setup(){
 // }
 
 
+
 void loop() {
 
-  // ledcWrite(MOTOR1_PWM_CHANNEL, 0);        // set the Duty cycle out of 255
+  // digitalWrite(PIN_MOTOR1_DIR, true);
+  // digitalWrite(PIN_MOTOR2_DIR, false);
+
+  // // ledcWrite(MOTOR1_PWM_CHANNEL, 50);        // set the Duty cycle out of 255
+  // auto  pwm = 100; //50*1;
+  // uint pwmCalib = correctMotor2DutyCycle(pwm);
+  // ledcWrite(MOTOR1_PWM_CHANNEL, pwm); //pwmCalib);
+  // ledcWrite(MOTOR2_PWM_CHANNEL, pwm);
+  // delay(2000);
+
   // ledcWrite(MOTOR2_PWM_CHANNEL, 0);
-  // delay(1000);
-  // ledcWrite(MOTOR1_PWM_CHANNEL, 50);
-  //  ledcWrite(MOTOR2_PWM_CHANNEL, 50);
-  // delay(1000);
-  // ledcWrite(MOTOR1_PWM_CHANNEL, 80);
-  // ledcWrite(MOTOR2_PWM_CHANNEL, 80);
-  // delay(1000);
+  // ledcWrite(MOTOR1_PWM_CHANNEL, 0);
+
+  // delay(2000);
+
+  // digitalWrite(PIN_MOTOR1_DIR, false);
+  // digitalWrite(PIN_MOTOR2_DIR, false);
+  // ledcWrite(MOTOR2_PWM_CHANNEL, 23);
+  // ledcWrite(MOTOR1_PWM_CHANNEL, 23);
+
+  // delay(2000);
+
+  // ledcWrite(MOTOR2_PWM_CHANNEL, 0);
+  // ledcWrite(MOTOR1_PWM_CHANNEL, 0);
+
+  // delay(2000);
 
 }
 

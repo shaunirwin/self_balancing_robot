@@ -53,9 +53,9 @@ def sampled_data_controller(controller, plant_dt):
 
 def main():
     # continuous-time plant model
-    motor_ts = 0.039  # time constant of DFRobot motor [s]
+    tau_motor = 0.039  # time constant of DFRobot motor [s]
     pulses_per_sec_per_duty_cycle =  5385. / 255.    # [(pusles/sec)/duty_cycle]
-    motor_cont = ct.tf(pulses_per_sec_per_duty_cycle, (motor_ts, 1), inputs='u', outputs='y')
+    motor_cont = ct.tf(pulses_per_sec_per_duty_cycle, (tau_motor, 1), inputs='u', outputs='y', name='G_motor')
 
     # t, y = ct.step_response(motor_cont, 0.1)
     # plt.figure()
@@ -78,19 +78,35 @@ def main():
     # plt.xlabel('time (s)')
     # plt.ylabel('Wheel speed [pulses/sec]')
 
-    # create discrete-time controller
-    Kp = 1. * 0.25 * 0.68
+    # feedforward controller based on plant dynamics
+    print(motor_discrete)
+    K_ff = 0.1
+    controller_ff = K_ff * (1 / motor_discrete) / ct.TransferFunction.z    # shift by one time step to make causal
+    controller_ff.set_inputs('r')
+    controller_ff.set_outputs('u_ff')
+    controller_ff.name = 'C_ff'
+    print('ff controller:', controller_ff)
+
+    # create discrete-time PID controller
+    Kp = 1. * 0.25 * 0.68 #* 0.3
     Ki = 2.2
     Kd = 0.
     controller_p = ct.tf([Kp], [1], controller_Ts)
     controller_i = ct.tf([Ki * controller_Ts], [1, -1], controller_Ts)
     controller_d = ct.tf([Kd, -Kd], [controller_Ts, 0], controller_Ts)
-    controller = controller_p + controller_i + controller_d
-    controller.set_inputs('e')
-    controller.set_outputs('u')
+    controller_pid = controller_p + controller_i + controller_d
+    controller_pid.set_inputs('e')
+    controller_pid.set_outputs('u_fb')
+    controller_pid.name = 'C_pid'
+
+    # create discrete-time lag controller
+    controller_p = ct.tf([Kp], [1], controller_Ts)      # TODO: implement lag compensator
+
+    controller_fb = controller_lag
 
     # create model of controller with a much shorter sampling time for simulation
-    controller_simulator = sampled_data_controller(controller, simulation_dt)
+    controller_simulator = sampled_data_controller(controller_pid, simulation_dt)
+    controller_simulator_ff = sampled_data_controller(controller_ff, simulation_dt)
 
     time = np.arange(0, 1.5, simulation_dt)
     unit_step_input = np.ones_like(time)
@@ -100,16 +116,29 @@ def main():
     # simulate closed loop system
 
     # plantcont = ct.tf(.5, (0.1, 1), inputs='u', outputs='y')
-    u_summer  = ct.summing_junction(inputs=['-y', 'r'], outputs='e')
+    err_summer  = ct.summing_junction(inputs=['-y', 'r'], outputs='e', name='sum_err')
+    u_summer  = ct.summing_junction(inputs=['u_ff', 'u_fb'], outputs='u', name='sum_u')
 
     # plant_simulator = ct.c2d(motor_cont, simulation_dt, 'zoh')
     # system from r to y
-    closed_loop_simulator = ct.interconnect([controller_simulator, motor_sim, u_summer],
+    closed_loop_simulator = ct.interconnect([controller_simulator, motor_sim, err_summer, u_summer], #, controller_simulator_ff],
         inputs='r', outputs=['y', 'u'])
+
+    # closed_loop_simulator = ct.interconnect([controller_pid, 
+    #                                          controller_ff, 
+    #                                          motor_sim],
+    #     inputs='r', outputs=['y', 'u'])
     
-    H = controller * motor_discrete
-    H_sim = controller_simulator * motor_sim
-    closed_loop_tf = ct.feedback(H, 1, sign=-1)
+    print(closed_loop_simulator.connection_table(show_names=True) )
+    
+    H = controller_fb * motor_discrete
+    # H_sim = controller_simulator * motor_sim
+    # closed_loop_tf = ct.feedback(H, 1, sign=-1)
+
+    # s = ct.TransferFunction.s
+    # G  = (10)/(s**2 + 2*s)
+    # G = motor_cont
+    # H = motor_cont / (1 + motor_cont)       # closed loop tf
 
     # simulate
     setpoint = 700.     # setpoint wheel speed [pulses/sec]
@@ -126,7 +155,16 @@ def main():
     ax[1].legend()
 
     plt.figure()
+    # ct.rlocus(motor_cont)
     ct.rlocus(H)
+    # ct.root_locus_map(motor_cont) #, gains=[0.1, 1, 10]) #np.linspace(start=0.01, stop=100, num=10))
+
+    # print(ct.poles(motor_cont))
+    # print(ct.damp(H))
+    # print(ct.margin(motor_cont))
+
+    # print(closed_loop_tf)
+
     plt.show()
 
 

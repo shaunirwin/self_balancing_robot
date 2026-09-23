@@ -15,6 +15,13 @@
 
 
 
+// typedef struct {
+//     StateEstimatePacket_t state;
+//     Contr
+
+// } __attribute__((packed)) LogPacket_t;
+
+
 typedef struct {
     long long packetID;
 
@@ -37,7 +44,7 @@ typedef struct {
     }
 
     std::string getCSVHeader() const {
-      std::string csvHeader{ "packetID,timeUs,pitch_est deg,motor1EncoderPulsesPerSec,motor2EncoderPulsesPerSec,dutyCycle1,dutyCycle2\n" };
+      std::string csvHeader{ "packetID,timeMs,pitch_est deg,motor1EncoderPulsesPerSec,motor2EncoderPulsesPerSec,dutyCycle1,dutyCycle2\n" };
       return csvHeader;
     }
 
@@ -172,21 +179,21 @@ void readSerial(int fd, bool logToCSV, std::string csvPath) {
                     const float motor1PulsesPerSec = 1.f * (data.state.motor1EncoderPulses - motor1PulsesPrevious) / timeDeltaSec;
                     const float motor2PulsesPerSec = 1.f * (data.state.motor2EncoderPulses - motor2PulsesPrevious) / timeDeltaSec;
 
-                    if (packetsReceived % 10 == 0) {
+                    if (packetsReceived % 1 == 0) {
                         std::cout << "Received message: " << header.packetID << ", " << (int) (header.microSecondsSinceBoot / 1e6) << "sec (" << std::setprecision(3) << std::setfill('0') << (1.f/timeDeltaSec) << "Hz):" << 
                         data.state.motor1EncoderPulses << " M1 pulses (" << std::round(motor1PulsesPerSec) << " pulses/sec), " << 
                         data.state.motor2EncoderPulses << " M2 pulses (" << std::round(motor2PulsesPerSec) << " pulses/sec), " << 
                         std::fixed  << std::internal <<  std::showpos << std::setw(6) << std::setprecision(2) << std::setfill(' ') <<
-                        "ax: " << data.imu.ax << " m/s^2, " << 
-                        "az: " << data.imu.az << " m/s^2, " << 
-                        // "gy: " << data.imu.gy * 180. / M_PI << " deg/s, " << 
-                        "gy calib: " << data.pitchInfo.pitchVelocityGyro * 180. / M_PI << " deg/s, " << 
-                        "calib: " << data.pitchInfo.isCalibrated << ", " <<
-                        "gyOffset: " << data.pitchInfo.gyroOffsetY * 180. / M_PI << " deg/s, " << 
-                        "gyVel: " << data.pitchInfo.pitchVelocityGyro * 180. / M_PI << " deg/s, " << 
-                        "pitch accel: " << data.pitchInfo.pitchAccel * 180. / M_PI << " deg, " << 
-                        "pitch gyro: " << data.pitchInfo.pitchGyro * 180. / M_PI << " deg, " << 
-                        "pitch est: " << data.pitchInfo.pitchEst * 180. / M_PI << " deg, " << 
+                        // "ax: " << data.imu.ax << " m/s^2, " << 
+                        // "az: " << data.imu.az << " m/s^2, " << 
+                        // // "gy: " << data.imu.gy * 180. / M_PI << " deg/s, " << 
+                        // "gy calib: " << data.pitchInfo.pitchVelocityGyro * 180. / M_PI << " deg/s, " << 
+                        // "calib: " << data.pitchInfo.isCalibrated << ", " <<
+                        // "gyOffset: " << data.pitchInfo.gyroOffsetY * 180. / M_PI << " deg/s, " << 
+                        // "gyVel: " << data.pitchInfo.pitchVelocityGyro * 180. / M_PI << " deg/s, " << 
+                        // "pitch accel: " << data.pitchInfo.pitchAccel * 180. / M_PI << " deg, " << 
+                        // "pitch gyro: " << data.pitchInfo.pitchGyro * 180. / M_PI << " deg, " << 
+                        // "pitch est: " << data.pitchInfo.pitchEst * 180. / M_PI << " deg, " << 
                         // "temp: " << data.imu.temp << " deg C" <<
                         std::endl;
                     }
@@ -196,12 +203,19 @@ void readSerial(int fd, bool logToCSV, std::string csvPath) {
                     motor2PulsesPrevious = data.state.motor2EncoderPulses;
 
                     if (logToCSV) {
+                        // imuPackets.push_back(data.imu);
+
+                        // if (imuPackets.size() == samplesPerLog) {
+                        //     writeBinaryData(csvPath, imuPackets);
+                        //     imuPackets.clear();
+                        // }
+
                         CSVRow_t csvRow {
                             .packetID = header.packetID,
                             .microSecondsSinceBoot = header.microSecondsSinceBoot,
                             .pitch_est = data.state.pitch_est,
-                            .motor1EncoderPulsesPerSec = motor1PulsesPerSec,
-                            .motor2EncoderPulsesPerSec = motor2PulsesPerSec,
+                            // .motor1EncoderPulsesPerSec = motor1PulsesPerSec,
+                            // .motor2EncoderPulsesPerSec = motor2PulsesPerSec,
                             .dutyCycle1 = data.control.motorOutput.dutyCycle1,
                             .dutyCycle2 = data.control.motorOutput.dutyCycle2,
                         };
@@ -236,8 +250,10 @@ int main() {
         return -1;  // Exit if the serial port cannot be opened
     }
 
-    bool logToCSV = true;
-    std::string csvPath { "motorSpinUp.csv" };
+    bool logToCSV = false;
+    // std::string csvPath { "imuData.log" };
+    // std::string csvPath { "motorSpinUp.csv" };
+    std::string csvPath { "data_tmp.csv" };
 
     readSerial(serial_fd, logToCSV, csvPath);
 
