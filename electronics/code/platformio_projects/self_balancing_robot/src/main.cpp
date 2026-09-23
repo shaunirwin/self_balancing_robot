@@ -143,9 +143,9 @@ uint8_t dutyCycle2Manual {0};
 // Always boot disarmed. AUTO must be selected explicitly after calibration and
 // the live state estimate have been checked.
 ControlMode controlMode {MANUAL};
-uint DUTY_CYCLE_MIN = 15;
-uint DUTY_CYCLE_MAX = 253;      // conservative for now. Can be as high as 255
-float PITCH_ANGLE_ERROR_MAX = 25.f*M_PI/180.f;   // maximum pitch angle error before motors cut off
+uint DUTY_CYCLE_MIN = 35;
+uint DUTY_CYCLE_MAX = 160;      // conservative limit for initial floor tests
+float PITCH_ANGLE_ERROR_MAX = 10.f*M_PI/180.f;   // disarm AUTO after a fall begins
 float PITCH_ANGLE_ERROR_MIN = 0.2f*M_PI/180.f;   // minimumpitch angle error before motors cut off
 
 // PID variables
