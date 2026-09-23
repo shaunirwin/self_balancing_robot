@@ -2,6 +2,7 @@
 #include <string>
 #include <algorithm>
 #include <cstdint>
+#include <atomic>
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -89,8 +90,16 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 QueueHandle_t queueIMU;  // queue of IMU measurements
 QueueHandle_t queueStateEstimates;  // queue of state estimates
 QueueHandle_t queueTelemetry;  // latest telemetry snapshot waiting for serial transmission
+std::atomic<bool> resetControlTimingRequested {false};
 
 const uint TELEMETRY_DECIMATION = 5;  // transmit at 20 Hz when the controller runs at 100 Hz
+
+// Keep the time-critical control pipeline away from Wi-Fi and web-server work.
+constexpr BaseType_t IO_CORE = 0;
+constexpr BaseType_t CONTROL_CORE = 1;
+constexpr UBaseType_t IO_TASK_PRIORITY = 1;
+constexpr UBaseType_t CONTROL_PIPELINE_PRIORITY = 3;
+constexpr UBaseType_t MOTOR_CONTROL_PRIORITY = 4;
 
 typedef struct {
   PacketHeader_t header;
@@ -417,7 +426,12 @@ void taskControlMotors(void * parameter) {
     if (xQueueReceive(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) == pdPASS) {
 
       const int64_t controlTimeUs = esp_timer_get_time();
-      if (previousControlTimeUs != 0) {
+      if (resetControlTimingRequested.exchange(false)) {
+        previousControlTimeUs = controlTimeUs;
+        controlTimingSampleCount = 0;
+        controlTimingPacket = {};
+      }
+      else if (previousControlTimeUs != 0) {
         const uint32_t controlIntervalUs = static_cast<uint32_t>(controlTimeUs - previousControlTimeUs);
         const uint32_t absJitterUs = controlIntervalUs >= targetControlIntervalUs
             ? controlIntervalUs - targetControlIntervalUs
@@ -1076,10 +1090,18 @@ void setup(){
   }
 
   // Create the task that will be executed periodically
-  xTaskCreate(taskReadIMURawValues, "Read Raw IMU Values", 10000, NULL, 1, NULL);
-  xTaskCreate(taskEstimateState, "Estimate State", 2048, NULL, 1, NULL);
-  xTaskCreate(taskControlMotors, "Control Motors", 2048, NULL, 2, NULL);
-  xTaskCreate(taskTransmitTelemetry, "Transmit Telemetry", 2048, NULL, 1, NULL);
+  xTaskCreatePinnedToCore(
+      taskReadIMURawValues, "Read Raw IMU Values", 10000, NULL,
+      CONTROL_PIPELINE_PRIORITY, NULL, CONTROL_CORE);
+  xTaskCreatePinnedToCore(
+      taskEstimateState, "Estimate State", 2048, NULL,
+      CONTROL_PIPELINE_PRIORITY, NULL, CONTROL_CORE);
+  xTaskCreatePinnedToCore(
+      taskControlMotors, "Control Motors", 2048, NULL,
+      MOTOR_CONTROL_PRIORITY, NULL, CONTROL_CORE);
+  xTaskCreatePinnedToCore(
+      taskTransmitTelemetry, "Transmit Telemetry", 2048, NULL,
+      IO_TASK_PRIORITY, NULL, IO_CORE);
 
   hwTimer = timerBegin(/* timer num */ 0, /* clock divider */ 80, /* count up */true);
   timerAttachInterrupt(hwTimer, &stateEstimatorTimer, /* edge */ true);
@@ -1139,8 +1161,9 @@ void setup(){
     logPackets[i].dutyCycle1 = 3;
   }
 
-  // initWiFi();
-  // initWebserver();
+  initWiFi();
+  initWebserver();
+  resetControlTimingRequested.store(true);
 }
  
 // void loop(){
@@ -1185,6 +1208,10 @@ void setup(){
 
 
 void loop() {
+
+  // loopTask is pinned to the control core by the Arduino framework. Yield it
+  // while all application work is performed by the dedicated tasks above.
+  delay(1000);
 
   // digitalWrite(PIN_MOTOR1_DIR, true);
   // digitalWrite(PIN_MOTOR2_DIR, false);
