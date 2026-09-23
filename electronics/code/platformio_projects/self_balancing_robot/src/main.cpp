@@ -3,12 +3,12 @@
 #include <algorithm>
 #include <cstdint>
 #include <atomic>
+#include <cstring>
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
-#include <Base64.h>
 #include "driver/pcnt.h"
 // #include "driver/pulse_cnt.h"
 
@@ -119,6 +119,8 @@ enum class ControlCommandType : uint8_t {
   SET_MOTOR2_DIRECTION,
   SET_MOTOR1_DUTY,
   SET_MOTOR2_DUTY,
+  START_RECORDING,
+  STOP_RECORDING,
 };
 
 typedef struct {
@@ -152,23 +154,64 @@ float PITCH_ANGLE_ERROR_MIN = 0.2f*M_PI/180.f;   // minimumpitch angle error bef
 float pitch_angle_setpoint = 0; //-3.7*M_PI/180;  // desired pitch angle [rad]
 float pitch_angle_current = 0;        // current pitch angle [rad]
 
-// for logging data and sending to base station afterwards
+// Fixed-size, control-task-owned telemetry recording. The buffer is frozen
+// before the I/O core is allowed to stream it over HTTP.
+enum class RecordingState : uint8_t {
+  EMPTY,
+  RECORDING,
+  READY,
+  DOWNLOADING,
+};
+
 typedef struct {
-    float pitch_current;
-    float pitch_gyro;
+  uint32_t elapsed_us;
+  float pitch_rad;
+  float gyro_rad_s;
+  float pid_output;
+  int32_t motor1_encoder_pulses;
+  int32_t motor2_encoder_pulses;
+  uint32_t control_interval_us;
+  uint8_t motor1_pwm;
+  uint8_t motor2_pwm;
+  uint8_t flags;
+  uint8_t reserved;
+} RecordingRecord_t;
 
-    float motorSpeed;
-    int motorDir1;
-    uint dutyCycle1;
-    // uint dutyCycle2;
+static_assert(sizeof(RecordingRecord_t) == 32,
+              "RecordingRecord_t file format changed");
 
-} LogPacket_t;
+typedef struct {
+  char magic[8];
+  uint16_t version;
+  uint16_t header_size;
+  uint16_t record_size;
+  uint16_t sample_rate_hz;
+  uint32_t record_count;
+  uint32_t capacity;
+  float pid_kp;
+  float pid_ki;
+  float pid_kd;
+  float pitch_setpoint_rad;
+  float pitch_error_min_rad;
+  float pitch_error_max_rad;
+  uint8_t duty_cycle_min;
+  uint8_t duty_cycle_max;
+  uint16_t flags;
+  uint32_t reserved[3];
+} RecordingFileHeader_t;
 
-const long NUM_LOG_PACKETS = 30 * ESTIMATOR_FREQ; // log duration [s] * packets/sec
-LogPacket_t logPackets[NUM_LOG_PACKETS];
-bool enableLogging = false;
-uint logIndex = 0;
-// DataLogger dataLogger();
+static_assert(sizeof(RecordingFileHeader_t) == 64,
+              "RecordingFileHeader_t file format changed");
+
+constexpr uint32_t RECORDING_DURATION_SECONDS = 20;
+constexpr uint32_t RECORDING_CAPACITY =
+    RECORDING_DURATION_SECONDS * ESTIMATOR_FREQ;
+RecordingRecord_t recordingBuffer[RECORDING_CAPACITY];
+RecordingFileHeader_t recordingHeader {};
+std::atomic<RecordingState> recordingState {RecordingState::EMPTY};
+std::atomic<uint32_t> recordingCount {0};
+int64_t recordingStartTimeUs = 0;
+bool recordingSawAuto = false;
 
 // PID controller
 PropIntDiff pid(-1.f, 1.f, 1.f);
@@ -202,13 +245,56 @@ void IRAM_ATTR stateEstimatorTimer(){
   xSemaphoreGiveFromISR(timerSemaphore, NULL);
 }
 
-void startLogging() {
-  enableLogging = true;
-  logIndex = 0;
+const char *recordingStateToStr(const RecordingState state) {
+  switch (state) {
+    case RecordingState::EMPTY: return "EMPTY";
+    case RecordingState::RECORDING: return "RECORDING";
+    case RecordingState::READY: return "READY";
+    case RecordingState::DOWNLOADING: return "DOWNLOADING";
+  }
+  return "UNKNOWN";
 }
 
-void stopLogging() {
-  enableLogging = false;
+bool startRecording() {
+  if (recordingState.load(std::memory_order_acquire)
+      == RecordingState::DOWNLOADING) {
+    return false;
+  }
+
+  std::memcpy(recordingHeader.magic, "SBRLOG1", 8);
+  recordingHeader.version = 1;
+  recordingHeader.header_size = sizeof(RecordingFileHeader_t);
+  recordingHeader.record_size = sizeof(RecordingRecord_t);
+  recordingHeader.sample_rate_hz = ESTIMATOR_FREQ;
+  recordingHeader.record_count = 0;
+  recordingHeader.capacity = RECORDING_CAPACITY;
+  recordingHeader.pid_kp = pid.kp;
+  recordingHeader.pid_ki = pid.ki;
+  recordingHeader.pid_kd = pid.kd;
+  recordingHeader.pitch_setpoint_rad = pitch_angle_setpoint;
+  recordingHeader.pitch_error_min_rad = PITCH_ANGLE_ERROR_MIN;
+  recordingHeader.pitch_error_max_rad = PITCH_ANGLE_ERROR_MAX;
+  recordingHeader.duty_cycle_min = static_cast<uint8_t>(DUTY_CYCLE_MIN);
+  recordingHeader.duty_cycle_max = static_cast<uint8_t>(DUTY_CYCLE_MAX);
+  recordingHeader.flags = 0;
+  std::memset(recordingHeader.reserved, 0, sizeof(recordingHeader.reserved));
+
+  recordingCount.store(0, std::memory_order_relaxed);
+  recordingStartTimeUs = esp_timer_get_time();
+  recordingSawAuto = false;
+  recordingState.store(RecordingState::RECORDING, std::memory_order_release);
+  return true;
+}
+
+void stopRecording() {
+  if (recordingState.load(std::memory_order_acquire)
+      != RecordingState::RECORDING) {
+    return;
+  }
+
+  recordingHeader.record_count =
+      recordingCount.load(std::memory_order_acquire);
+  recordingState.store(RecordingState::READY, std::memory_order_release);
 }
 
 uint8_t correctMotor2DutyCycle(const uint8_t dutyCycle) {
@@ -501,6 +587,12 @@ void applyControlCommand(const ControlCommand_t &command,
     case ControlCommandType::SET_MOTOR2_DUTY:
       dutyCycle2Manual = static_cast<uint8_t>(command.uintValue);
       break;
+    case ControlCommandType::START_RECORDING:
+      startRecording();
+      break;
+    case ControlCommandType::STOP_RECORDING:
+      stopRecording();
+      break;
   }
 }
 
@@ -536,6 +628,59 @@ ControlStatusSnapshot_t getControlStatus() {
   const ControlStatusSnapshot_t snapshot = controlStatusSnapshot;
   portEXIT_CRITICAL(&controlStatusMux);
   return snapshot;
+}
+
+void recordControlSample(const int64_t controlTimeUs,
+                         const StateEstimatePacket_t &stateEstimatePacket,
+                         const ControlPacket_t &controlPacket,
+                         const ControlTimingPacket_t &controlTimingPacket,
+                         const bool autoWasActiveBeforeSafety) {
+  if (recordingState.load(std::memory_order_acquire)
+      != RecordingState::RECORDING) {
+    return;
+  }
+
+  recordingSawAuto = recordingSawAuto
+      || autoWasActiveBeforeSafety
+      || controlPacket.controlMode == ControlMode::AUTO;
+
+  const uint32_t index = recordingCount.load(std::memory_order_relaxed);
+  if (index >= RECORDING_CAPACITY) {
+    stopRecording();
+    return;
+  }
+
+  uint8_t flags = 0;
+  if (controlPacket.motorOutput.motor1dir) flags |= 1U << 0;
+  if (controlPacket.motorOutput.motor2dir) flags |= 1U << 1;
+  flags |= (static_cast<uint8_t>(controlPacket.controlMode) & 0x03U) << 2;
+  if (stateEstimatePacket.estimatesValid) flags |= 1U << 4;
+  if (controlPacket.motorOutput.motor1dir != MOTOR_1_DIR_INVERT) flags |= 1U << 5;
+  if (controlPacket.motorOutput.motor2dir != MOTOR_2_DIR_INVERT) flags |= 1U << 6;
+
+  recordingBuffer[index] = {
+    .elapsed_us = static_cast<uint32_t>(controlTimeUs - recordingStartTimeUs),
+    .pitch_rad = stateEstimatePacket.pitch_est,
+    .gyro_rad_s = stateEstimatePacket.pitch_velocity_gyro,
+    .pid_output = controlPacket.controlMode == ControlMode::AUTO
+        ? controlPacket.pid.motorSpeed
+        : 0.0f,
+    .motor1_encoder_pulses = stateEstimatePacket.motor1EncoderPulses,
+    .motor2_encoder_pulses = stateEstimatePacket.motor2EncoderPulses,
+    .control_interval_us = controlTimingPacket.interval_us,
+    .motor1_pwm = controlPacket.motorOutput.dutyCycle1,
+    .motor2_pwm = controlPacket.motorOutput.dutyCycle2Calibrated,
+    .flags = flags,
+    .reserved = 0,
+  };
+
+  recordingCount.store(index + 1, std::memory_order_release);
+
+  if (index + 1 >= RECORDING_CAPACITY
+      || (recordingSawAuto
+          && controlPacket.controlMode != ControlMode::AUTO)) {
+    stopRecording();
+  }
 }
 
 ManualControlPacket_t stepMotors(const uint dutyCycleMin, const uint dutyCycleMax, const uint period, bool changeDir) {
@@ -602,6 +747,8 @@ void taskControlMotors(void * parameter) {
         applyControlCommand(command, stateEstimatePacket);
       }
 
+      const bool autoWasActiveBeforeSafety = controlMode == ControlMode::AUTO;
+
       // Emergency stop wins over every queued command received in this cycle.
       if (emergencyStopRequested.exchange(false)) {
         stopMotors();
@@ -658,6 +805,9 @@ void taskControlMotors(void * parameter) {
       digitalWrite(PIN_MOTOR1_DIR, controlPacket.motorOutput.motor1dir);
       digitalWrite(PIN_MOTOR2_DIR, controlPacket.motorOutput.motor2dir);
 
+      recordControlSample(controlTimeUs, stateEstimatePacket, controlPacket,
+                          controlTimingPacket, autoWasActiveBeforeSafety);
+
       publishControlStatus(stateEstimatePacket);
 
       if (packetID % TELEMETRY_DECIMATION == 0) {
@@ -674,19 +824,6 @@ void taskControlMotors(void * parameter) {
 
       packetID ++;
 
-      // log data to RAM
-      if (enableLogging) {
-        if (logIndex == NUM_LOG_PACKETS) {
-          stopLogging();
-        }
-        // logPackets[logIndex].pitch_current = pitch_angle_current;
-        // logPackets[logIndex].pitch_gyro = pitchAngleGyro;
-        // logPackets[logIndex].dutyCycle1 = dutyCycle1;
-        // logPackets[logIndex].motorDir1 = motor1dirActual;
-        // logPackets[logIndex].motorSpeed = pid.Output;
-
-        logIndex ++;
-      }
     }
   }
 }
@@ -954,51 +1091,141 @@ void initWebserver() {
     request->send(200, "application/json", jsonString);
   });
 
-  server.on("/logs", HTTP_GET, [](AsyncWebServerRequest *request){
-    // stop logging before getting the data
-    stopLogging();
+  server.on("/recording/start", HTTP_POST, [](AsyncWebServerRequest *request){
+    if (recordingState.load(std::memory_order_acquire)
+        == RecordingState::DOWNLOADING) {
+      request->send(409, "application/json",
+                    "{\"status\":\"error\",\"message\":\"Recording download in progress\"}");
+      return;
+    }
 
+    ControlCommand_t command {};
+    command.type = ControlCommandType::START_RECORDING;
+    if (!enqueueControlCommand(command)) {
+      request->send(503, "application/json",
+                    "{\"status\":\"error\",\"message\":\"Control command queue full\"}");
+      return;
+    }
 
+    request->send(202, "application/json",
+                  "{\"status\":\"success\",\"message\":\"Recording start queued\"}");
+  });
 
-    // Calculate the size of the byte array
-    const size_t numPackets = sizeof(logPackets) / sizeof(LogPacket_t);
-    const size_t packetSize = sizeof(LogPacket_t);
-    const size_t byteArraySize = numPackets * packetSize;
+  server.on("/recording/stop", HTTP_POST, [](AsyncWebServerRequest *request){
+    ControlCommand_t command {};
+    command.type = ControlCommandType::STOP_RECORDING;
+    if (!enqueueControlCommand(command)) {
+      request->send(503, "application/json",
+                    "{\"status\":\"error\",\"message\":\"Control command queue full\"}");
+      return;
+    }
 
-    // Convert the array of structs to a byte array
-    // uint8_t byteArray[byteArraySize];
-    char byteArray[byteArraySize];
-    memcpy(byteArray, logPackets, byteArraySize);
+    request->send(202, "application/json",
+                  "{\"status\":\"success\",\"message\":\"Recording stop queued\"}");
+  });
 
-    // Encode the byte array to a base64 string
-    char base64Str[Base64.encodedLength(byteArraySize)];
-    Base64.encode(base64Str, byteArray, byteArraySize);
+  server.on("/recording/status", HTTP_GET, [](AsyncWebServerRequest *request){
+    const RecordingState state =
+        recordingState.load(std::memory_order_acquire);
+    const uint32_t count = recordingCount.load(std::memory_order_acquire);
 
-    // Create a JSON document
     JsonDocument jsonDoc;
-    jsonDoc["data"] = base64Str;
-    jsonDoc["num_packets_logged"] = logIndex;
-    jsonDoc["num_bytes_logged"] = sizeof(logPackets);
+    jsonDoc["state"] = recordingStateToStr(state);
+    jsonDoc["record_count"] = count;
+    jsonDoc["capacity"] = RECORDING_CAPACITY;
+    jsonDoc["sample_rate_hz"] = ESTIMATOR_FREQ;
+    jsonDoc["record_size_bytes"] = sizeof(RecordingRecord_t);
+    jsonDoc["bytes_available"] =
+        sizeof(RecordingFileHeader_t) + count * sizeof(RecordingRecord_t);
+    jsonDoc["duration_seconds"] =
+        static_cast<float>(count) / static_cast<float>(ESTIMATOR_FREQ);
+    jsonDoc["max_duration_seconds"] = RECORDING_DURATION_SECONDS;
+    jsonDoc["download_ready"] = state == RecordingState::READY;
 
-    // Convert JSON document to string
     String jsonString;
     serializeJson(jsonDoc, jsonString);
-
-
-
-
-
-    // JsonDocument jsonDoc;
-    // (uint8_t *) &microSecondsSinceBoot, sizeof( microSecondsSinceBoot )
-    // jsonDoc["data"] = JsonString{(char *) &logPackets, sizeof(logPackets)};
-    // jsonDoc["num_packets_logged"] = logIndex;
-    // jsonDoc["num_bytes_logged"] = sizeof(logPackets);
-
-    // String jsonString;
-    // serializeJson(jsonDoc, jsonString);
-
-    // Send JSON response
     request->send(200, "application/json", jsonString);
+  });
+
+  server.on("/recording/download", HTTP_GET, [](AsyncWebServerRequest *request){
+    RecordingState expected = RecordingState::READY;
+    if (!recordingState.compare_exchange_strong(
+            expected, RecordingState::DOWNLOADING,
+            std::memory_order_acq_rel)) {
+      request->send(409, "application/json",
+                    "{\"status\":\"error\",\"message\":\"No completed recording is ready\"}");
+      return;
+    }
+
+    const uint32_t count = recordingCount.load(std::memory_order_acquire);
+    if (count == 0) {
+      recordingState.store(RecordingState::READY, std::memory_order_release);
+      request->send(409, "application/json",
+                    "{\"status\":\"error\",\"message\":\"Recording is empty\"}");
+      return;
+    }
+
+    RecordingFileHeader_t header = recordingHeader;
+    header.record_count = count;
+    const size_t recordsSize = count * sizeof(RecordingRecord_t);
+    const size_t totalSize = sizeof(RecordingFileHeader_t) + recordsSize;
+
+    AsyncWebServerResponse *response = request->beginResponse(
+        "application/octet-stream", totalSize,
+        [header, recordsSize, totalSize](uint8_t *buffer, size_t maxLen,
+                                        size_t index) -> size_t {
+          if (index >= totalSize) {
+            recordingState.store(RecordingState::READY,
+                                 std::memory_order_release);
+            return 0;
+          }
+
+          size_t copied = 0;
+          if (index < sizeof(RecordingFileHeader_t)) {
+            const size_t headerBytes = std::min(
+                maxLen, sizeof(RecordingFileHeader_t) - index);
+            std::memcpy(buffer,
+                        reinterpret_cast<const uint8_t *>(&header) + index,
+                        headerBytes);
+            copied += headerBytes;
+          }
+
+          const size_t absoluteOffset = index + copied;
+          if (copied < maxLen
+              && absoluteOffset >= sizeof(RecordingFileHeader_t)) {
+            const size_t recordOffset =
+                absoluteOffset - sizeof(RecordingFileHeader_t);
+            if (recordOffset < recordsSize) {
+              const size_t recordBytes = std::min(
+                  maxLen - copied, recordsSize - recordOffset);
+              std::memcpy(buffer + copied,
+                          reinterpret_cast<const uint8_t *>(recordingBuffer)
+                              + recordOffset,
+                          recordBytes);
+              copied += recordBytes;
+            }
+          }
+
+          if (index + copied >= totalSize) {
+            recordingState.store(RecordingState::READY,
+                                 std::memory_order_release);
+          }
+          return copied;
+        });
+    response->addHeader("Content-Disposition",
+                        "attachment; filename=balance-recording.bin");
+    response->addHeader("Cache-Control", "no-store");
+    request->onDisconnect([](){
+      RecordingState downloading = RecordingState::DOWNLOADING;
+      recordingState.compare_exchange_strong(
+          downloading, RecordingState::READY, std::memory_order_acq_rel);
+    });
+    request->send(response);
+  });
+
+  server.on("/logs", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(410, "application/json",
+                  "{\"status\":\"error\",\"message\":\"Use /recording endpoints\"}");
   });
 
   server.on("/set-value", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -1204,14 +1431,16 @@ void initWebserver() {
       jsonDoc["message"] = "Emergency stop requested";
     }
     else if (key == "START_LOGGING") {
-      startLogging();
       convertedSuccessfully = true;
-      jsonDoc["value"] = enableLogging;
+      command.type = ControlCommandType::START_RECORDING;
+      commandRequired = true;
+      jsonDoc["value"] = "queued";
     }
     else if (key == "STOP_LOGGING") {
-      stopLogging();
       convertedSuccessfully = true;
-      jsonDoc["value"] = enableLogging;
+      command.type = ControlCommandType::STOP_RECORDING;
+      commandRequired = true;
+      jsonDoc["value"] = "queued";
     }
     else {
       request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Key invalid\"}");
@@ -1366,20 +1595,6 @@ void setup(){
   pid.ki = 0.0;
   pid.kd = 0.4;
   pid.inAuto = true;
-
-  // initialise storage file
-  // sdCardSetup();
-  // deleteFile(SD_MMC, "/data_log.bin");
-
-  // logPackets[0].pitch_current = 7.f;    // TODO: testing
-
-  for (uint i = 0; i < NUM_LOG_PACKETS; i++) {    // TODO: testing
-    logPackets[i].pitch_current = 7.f;
-    logPackets[i].pitch_gyro = 8.f;
-    logPackets[i].motorSpeed = 9.f;
-    logPackets[i].motorDir1 = 2;
-    logPackets[i].dutyCycle1 = 3;
-  }
 
   initWiFi();
   initWebserver();
