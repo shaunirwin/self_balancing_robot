@@ -12,6 +12,7 @@ let selected = null
 let playing = null
 let charts = []
 let polling = false
+let timeWindow = null
 const dirtyControls = new Set()
 
 async function api(path, options) {
@@ -258,6 +259,62 @@ $('playback').addEventListener('click', () => {
   }, 33)
 })
 
+function recordingDuration() {
+  return recording ? Math.max(0, recording.samples.length - 1) / recording.header.sampleRateHz : 0
+}
+
+function clampTimeWindow(min, max) {
+  const duration = recordingDuration()
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min || duration <= 0) return [0, duration]
+  const span = Math.min(duration, Math.max(1 / recording.header.sampleRateHz, max - min))
+  const start = Math.max(0, Math.min(duration - span, min))
+  return [start, start + span]
+}
+
+function setTimeWindow(min, max) {
+  if (!recording || recording.samples.length < 2) return
+  const next = clampTimeWindow(min, max)
+  timeWindow = next
+  const duration = recordingDuration()
+  $('time-window-label').textContent = next[0] < 1e-6 && duration - next[1] < 1e-6
+    ? `Full recording · 0–${duration.toFixed(2)} s`
+    : `Visible · ${next[0].toFixed(2)}–${next[1].toFixed(2)} s`
+  $('reset-zoom').disabled = next[0] < 1e-6 && duration - next[1] < 1e-6
+  $('pan-left').disabled = next[0] < 1e-6
+  $('pan-right').disabled = duration - next[1] < 1e-6
+  $('zoom-in').disabled = next[1] - next[0] <= 1 / recording.header.sampleRateHz + 1e-6
+  $('zoom-out').disabled = next[1] - next[0] >= duration - 1e-6
+  for (const plot of charts) {
+    const x = plot.scales.x
+    if (Math.abs(x.min - next[0]) > 1e-7 || Math.abs(x.max - next[1]) > 1e-7) plot.setScale('x', { min: next[0], max: next[1] })
+  }
+  if (selected !== null) {
+    for (const plot of charts) plot.setCursor({ left: plot.valToPos(selected / recording.header.sampleRateHz, 'x') })
+  }
+}
+
+function zoomTime(factor, anchor) {
+  if (!timeWindow) return
+  const [min, max] = timeWindow
+  const span = max - min
+  const nextSpan = span * factor
+  const fraction = Math.max(0, Math.min(1, (anchor - min) / span))
+  const nextMin = anchor - fraction * nextSpan
+  setTimeWindow(nextMin, nextMin + nextSpan)
+}
+
+function panTime(amount) {
+  if (timeWindow) setTimeWindow(timeWindow[0] + amount, timeWindow[1] + amount)
+}
+
+for (const [id, action] of [
+  ['zoom-in', () => zoomTime(.5, (timeWindow[0] + timeWindow[1]) / 2)],
+  ['zoom-out', () => zoomTime(2, (timeWindow[0] + timeWindow[1]) / 2)],
+  ['pan-left', () => panTime(-(timeWindow[1] - timeWindow[0]) * .25)],
+  ['pan-right', () => panTime((timeWindow[1] - timeWindow[0]) * .25)],
+  ['reset-zoom', () => setTimeWindow(0, recordingDuration())],
+]) $(id).addEventListener('click', action)
+
 function chart(title, fields, samples) {
   const card = document.createElement('div')
   card.className = 'chart-card'
@@ -273,12 +330,55 @@ function chart(title, fields, samples) {
     scales: { x: { time: false } },
     axes: [{ stroke: '#8baaa8', grid: { stroke: '#274047' }, label: 'Time (s)' }, { stroke: '#8baaa8', grid: { stroke: '#274047' } }],
     series: [{}, ...fields.map(([name], i) => ({ label: name, stroke: colors[i], width: 1.5 }))],
-    legend: { show: true }, cursor: { drag: { x: false, y: false } },
+    legend: { show: true },
+    cursor: {
+      sync: { key: 'sbr-recording', scales: ['x', null], setSeries: false },
+      drag: {
+        x: true, y: false, dist: 8,
+        click: (_plot, event) => event.stopPropagation(),
+      },
+    },
+    hooks: {
+      setScale: [(plot, key) => {
+        if (key === 'x' && timeWindow && charts.includes(plot)) {
+          const { min, max } = plot.scales.x
+          if (Math.abs(min - timeWindow[0]) > 1e-7 || Math.abs(max - timeWindow[1]) > 1e-7) setTimeWindow(min, max)
+        }
+      }],
+    },
   }, [samples.map((_, i) => i / recording.header.sampleRateHz), ...fields.map(([, key]) => samples.map(s => s[key]))], host)
-  host.addEventListener('click', event => {
+  plot.over.addEventListener('click', event => {
     const x = plot.posToVal(event.clientX - plot.over.getBoundingClientRect().left, 'x')
     selectSample(Math.round(x * recording.header.sampleRateHz))
   })
+  plot.over.addEventListener('wheel', event => {
+    event.preventDefault()
+    const span = timeWindow[1] - timeWindow[0]
+    if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+      const pixels = event.deltaX || event.deltaY
+      panTime(pixels / plot.over.clientWidth * span)
+    } else {
+      const left = event.clientX - plot.over.getBoundingClientRect().left
+      const anchor = plot.posToVal(Math.max(0, Math.min(plot.over.clientWidth, left)), 'x')
+      zoomTime(Math.exp(Math.max(-150, Math.min(150, event.deltaY)) * .005), anchor)
+    }
+  }, { passive: false })
+  let dragStart = null
+  plot.over.addEventListener('pointerdown', event => {
+    if (event.button !== 1) return
+    event.preventDefault()
+    dragStart = { x: event.clientX, min: timeWindow[0], max: timeWindow[1] }
+    plot.over.setPointerCapture(event.pointerId)
+  })
+  plot.over.addEventListener('pointermove', event => {
+    if (!dragStart) return
+    const secondsPerPixel = (dragStart.max - dragStart.min) / plot.over.clientWidth
+    const offset = (dragStart.x - event.clientX) * secondsPerPixel
+    setTimeWindow(dragStart.min + offset, dragStart.max + offset)
+  })
+  plot.over.addEventListener('pointerup', () => { dragStart = null })
+  plot.over.addEventListener('pointercancel', () => { dragStart = null })
+  plot.over.addEventListener('auxclick', event => { if (event.button === 1) event.preventDefault() })
   charts.push(plot)
 }
 
@@ -287,6 +387,7 @@ function openRecording(buffer, name) {
   if (playing) { clearInterval(playing); playing = null; $('playback').textContent = 'Play' }
   for (const plot of charts) plot.destroy()
   charts = []
+  timeWindow = null
   $('charts').replaceChildren()
   recording = parsed
   selected = null
@@ -297,11 +398,14 @@ function openRecording(buffer, name) {
   $('sample-slider').disabled = parsed.samples.length === 0
   $('playback').disabled = parsed.samples.length < 2
   $('sample-label').textContent = '—'
+  for (const id of ['zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'reset-zoom']) $(id).disabled = parsed.samples.length < 2
+  $('time-window-label').textContent = parsed.samples.length ? `Full recording · 0–${recordingDuration().toFixed(2)} s` : 'No samples'
   if (!parsed.samples.length) return
   chart('Pitch · degrees / gyro · degrees per second', [['Pitch', 'pitchDeg'], ['Gyro', 'gyroDegS']], parsed.samples)
   chart('PID output', [['PID', 'pidOutput']], parsed.samples)
   chart('Encoder pulses', [['Motor 1', 'motor1EncoderPulses'], ['Motor 2', 'motor2EncoderPulses']], parsed.samples)
   chart('Motor PWM', [['Motor 1', 'motor1Pwm'], ['Motor 2', 'motor2Pwm']], parsed.samples)
   chart('Control interval · microseconds', [['Interval', 'controlIntervalUs']], parsed.samples)
+  setTimeWindow(0, recordingDuration())
   selectSample(0)
 }

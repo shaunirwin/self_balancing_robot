@@ -40,6 +40,17 @@
         <section class="panel analysis"><div class="section-head"><div><span class="eyebrow">ANALYSIS</span><h2>Recording viewer</h2></div><span id="file-name" class="filename">No file loaded</span></div>
           <p id="file-summary" class="hint">Open a local recording or download a completed capture.</p>
           <div class="timeline"><label for="sample-slider">Selected sample <strong id="sample-label">—</strong></label><input id="sample-slider" type="range" min="0" max="0" value="0" disabled><button id="playback" disabled>Play</button><button id="live-view">Live view</button></div>
+          <div class="chart-toolbar" aria-label="Chart navigation">
+            <span id="time-window-label">Full recording</span>
+            <div class="chart-toolbar-buttons">
+              <button id="pan-left" disabled aria-label="Pan time left">← Pan</button>
+              <button id="zoom-in" disabled aria-label="Zoom in time">Zoom in</button>
+              <button id="zoom-out" disabled aria-label="Zoom out time">Zoom out</button>
+              <button id="pan-right" disabled aria-label="Pan time right">Pan →</button>
+              <button id="reset-zoom" disabled>Reset view</button>
+            </div>
+          </div>
+          <p class="hint chart-help">Drag across a plot to zoom in. Scroll to zoom around the pointer; Shift + scroll or middle-button drag pans in time. All plots share the same time range.</p>
           <div id="charts" class="charts"></div>
         </section>
       </main>
