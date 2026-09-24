@@ -401,11 +401,12 @@ function openRecording(buffer, name) {
   for (const id of ['zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'reset-zoom']) $(id).disabled = parsed.samples.length < 2
   $('time-window-label').textContent = parsed.samples.length ? `Full recording · 0–${recordingDuration().toFixed(2)} s` : 'No samples'
   if (!parsed.samples.length) return
-  chart('Pitch · degrees / gyro · degrees per second', [['Pitch', 'pitchDeg'], ['Gyro', 'gyroDegS']], parsed.samples)
+  chart('Pitch · degrees', [['Pitch', 'pitchDeg']], parsed.samples)
   chart('PID output', [['PID', 'pidOutput']], parsed.samples)
-  chart('Encoder pulses', [['Motor 1', 'motor1EncoderPulses'], ['Motor 2', 'motor2EncoderPulses']], parsed.samples)
+  chart('Gyro · degrees per second', [['Gyro', 'gyroDegS']], parsed.samples)
   chart('Motor PWM · + forward / − backward', [['Motor 1', 'motor1SignedPwm'], ['Motor 2', 'motor2SignedPwm']], parsed.samples)
   chart('Control interval · microseconds', [['Interval', 'controlIntervalUs']], parsed.samples)
+  chart('Encoder pulses', [['Motor 1', 'motor1EncoderPulses'], ['Motor 2', 'motor2EncoderPulses']], parsed.samples)
   setTimeWindow(0, recordingDuration())
   selectSample(0)
 }
