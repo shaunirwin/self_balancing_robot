@@ -25,16 +25,22 @@ export function parseRecording(buffer) {
     const flags = view.getUint8(o + 30)
     const pitchRad = view.getFloat32(o + 4, true)
     const gyroRadS = view.getFloat32(o + 8, true)
+    const motor1Pwm = view.getUint8(o + 28)
+    const motor2Pwm = view.getUint8(o + 29)
+    const motor1ForwardCommand = (flags >> 5) & 1
+    const motor2ForwardCommand = (flags >> 6) & 1
     return {
       elapsedS: view.getUint32(o, true) / 1e6,
       pitchRad, pitchDeg: pitchRad * DEG, gyroRadS, gyroDegS: gyroRadS * DEG,
       pidOutput: view.getFloat32(o + 12, true),
       motor1EncoderPulses: view.getInt32(o + 16, true), motor2EncoderPulses: view.getInt32(o + 20, true),
       controlIntervalUs: view.getUint32(o + 24, true),
-      motor1Pwm: view.getUint8(o + 28), motor2Pwm: view.getUint8(o + 29),
+      motor1Pwm, motor2Pwm,
+      motor1SignedPwm: motor1ForwardCommand ? motor1Pwm : -motor1Pwm,
+      motor2SignedPwm: motor2ForwardCommand ? motor2Pwm : -motor2Pwm,
       motor1DirPin: flags & 1, motor2DirPin: (flags >> 1) & 1,
       mode: modes[(flags >> 2) & 3], estimatesValid: (flags >> 4) & 1,
-      motor1ForwardCommand: (flags >> 5) & 1, motor2ForwardCommand: (flags >> 6) & 1,
+      motor1ForwardCommand, motor2ForwardCommand,
     }
   })
   return { header, samples }
