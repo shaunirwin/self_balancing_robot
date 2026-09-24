@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Balance Lab · Robot dashboard</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div><span class="eyebrow">SELF BALANCING ROBOT</span><h1>Balance Lab</h1></div>
+        <div class="connection"><span id="connection-dot" class="dot"></span><span id="connection">Connecting…</span></div>
+      </header>
+      <main>
+        <section class="hero panel">
+          <div class="hero-copy"><span class="eyebrow">LIVE TELEMETRY</span><h2 id="live-pitch">—°</h2><p>Current pitch</p><div class="chips"><span id="mode-chip">Mode —</span><span id="estimate-chip">Estimate —</span><span id="arm-chip">Auto arm —</span></div></div>
+          <div id="robot-view" aria-label="3D pitch view"></div>
+          <div class="hero-side"><span class="eyebrow">CHASSIS VIEW</span><p id="view-source">Live robot pitch</p><p class="hint">Pitch rotation only. Drag the recording timeline to inspect a sample.</p></div>
+        </section>
+        <div class="columns">
+          <section class="panel controls"><div class="section-head"><div><span class="eyebrow">TUNING</span><h2>Controller</h2></div><button id="emergency" class="danger">Emergency stop</button></div>
+            <p id="control-message" class="message" role="status">Connect to the robot to update controls.</p>
+            <form id="control-form">
+              <label>Kp <input name="PID_Kp" type="number" step="any" required></label>
+              <label>Ki <input name="PID_Ki" type="number" step="any" required></label>
+              <label>Kd <input name="PID_Kd" type="number" step="any" required></label>
+              <label>Pitch setpoint <span class="unit">deg</span><input name="PID_setpoint" type="number" step="any" min="-25" max="25" required></label>
+              <label>Control mode <select name="CONTROL_MODE"><option value="MANUAL">MANUAL</option><option value="AUTO">AUTO</option></select></label>
+              <button type="submit" class="primary">Apply changed values</button>
+            </form>
+            <p class="hint">Changes are queued by the robot. Active values are confirmed from status. Setpoint is shown in degrees and sent in radians.</p>
+          </section>
+          <section class="panel recorder"><div class="section-head"><div><span class="eyebrow">CAPTURE</span><h2>Recording</h2></div><strong id="recording-state" class="state">—</strong></div>
+            <div class="progress"><div id="progress-fill"></div></div><p id="recording-progress">Waiting for robot…</p>
+            <div class="actions"><button id="start-recording" class="primary">Start</button><button id="stop-recording">Stop</button><button id="download-recording">Download & open</button></div>
+            <p id="recording-message" class="message" role="status"></p>
+            <div class="file-picker"><label for="recording-file">Open local SBRLOG1 file</label><input id="recording-file" type="file" accept=".bin,application/octet-stream"></div>
+          </section>
+        </div>
+        <section class="panel analysis"><div class="section-head"><div><span class="eyebrow">ANALYSIS</span><h2>Recording viewer</h2></div><span id="file-name" class="filename">No file loaded</span></div>
+          <p id="file-summary" class="hint">Open a local recording or download a completed capture.</p>
+          <div class="timeline"><label for="sample-slider">Selected sample <strong id="sample-label">—</strong></label><input id="sample-slider" type="range" min="0" max="0" value="0" disabled><button id="playback" disabled>Play</button><button id="live-view">Live view</button></div>
+          <div id="charts" class="charts"></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

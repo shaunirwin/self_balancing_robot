@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REST POST Request Example</title>
+</head>
+<body>
+    <h1>Control Panel</h1>
+
+    <!-- <div>
+        <label for="slider1">Slider 1:</label>
+        <input type="range" id="slider1" name="slider1" min="0" max="100" value="50" oninput="updateValue('slider1', this.value)">
+        <input type="text" id="value1" name="value1" value="50">
+        <button onclick="sendSliderValue('slider1', 'value1')">Submit Slider 1</button>
+    </div>
+    
+    <div>
+        <label for="slider2">Slider 2:</label>
+        <input type="range" id="slider2" name="slider2" min="0" max="100" value="50" oninput="updateValue('slider2', this.value)">
+        <input type="text" id="value2" name="value2" value="50">
+        <button onclick="sendSliderValue('slider2', 'value2')">Submit Slider 2</button>
+    </div> -->
+
+    <div>
+        <label for="PID_Kp">Kp:</label>
+        <input type="text" id="PID_Kp" name="PID_Kp" value="6.8">
+        <button onclick="sendFieldValue('PID_Kp')">Submit Kp</button>
+    </div>
+
+    <script>
+        function updateValue(sliderId, value) {
+            document.getElementById('value' + sliderId.slice(-1)).value = value;
+        }
+
+        // function sendSliderValue(sliderId, valueId) {
+        //     const sliderValue = document.getElementById(sliderId).value;
+
+        //     const data = {};
+        //     data[sliderId] = sliderValue;
+
+        //     fetch('http://your-server-address/your-endpoint', {
+        //         method: 'POST',
+        //         headers: {
+        //             'Content-Type': 'application/json'
+        //         },
+        //         body: JSON.stringify(data)
+        //     })
+        //     .then(response => response.json())
+        //     .then(data => {
+        //         console.log('Success:', data);
+        //         alert('Slider value sent successfully!');
+        //     })
+        //     .catch((error) => {
+        //         console.error('Error:', error);
+        //         alert('Error sending slider value.');
+        //     });
+        // }
+
+        function sendFieldValue(fieldId) {
+            const fieldValue = document.getElementById(fieldId).value;
+
+            const data = {};
+            data[fieldId] = fieldValue;
+
+            fetch('http://192.168.178.55/set-value', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Success:', data);
+                alert('Field value sent successfully!');
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                alert('Error sending field value.');
+            });
+        }
+    </script>
+</body>
+</html>

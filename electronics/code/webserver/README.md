@@ -1,0 +1,18 @@
+# Laptop dashboard
+
+Run from `electronics/code/webserver` with Node.js 20.19+ or 22.12+:
+
+```sh
+npm install
+ROBOT_URL=http://192.168.178.55 npm run dev
+```
+
+Open <http://localhost:5173>. Set `ROBOT_URL` to the robot's HTTP origin on your network (no path or trailing slash). The default is `http://192.168.178.55`. Restart Vite after changing it. The server listens only on loopback. Browser API calls use `/api/*`; Vite forwards them to the robot with `/api` removed. The existing ESP32 endpoints are unchanged.
+
+Open any local `SBRLOG1` `.bin` file in the recording viewer, or use Start, Stop, then Download & open. Click a chart or drag the timeline to inspect the corresponding pitch in the 3D view. The view shows only pitch. With no recording selected, it follows live status polling. Controller values are submitted through `/set-value` as form fields; the dashboard rereads `/status` to confirm queued changes. Automatic mode may remain inactive if the robot's arm conditions are not met.
+
+```sh
+npm run build
+```
+
+The build checks and bundles the dashboard. For connected controls and recording, use `npm run dev` so the API proxy is active; opening `dist/index.html` directly does not provide a robot connection.
