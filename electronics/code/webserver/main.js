@@ -86,8 +86,10 @@ function updateControls(status) {
   const values = {
     PID_Kp: status.PID_Kp, PID_Ki: status.PID_Ki, PID_Kd: status.PID_Kd,
     PID_setpoint: Number(status.PID_setpoint) * DEG,
+    MOTOR_DUTY_CYCLE_MAX: status.MOTOR_DUTY_CYCLE_MAX,
     CONTROL_MODE: status.CONTROL_MODE,
   }
+  form.elements.namedItem('MOTOR_DUTY_CYCLE_MAX').min = status.MOTOR_DUTY_CYCLE_MIN
   for (const [key, value] of Object.entries(values)) {
     const input = form.elements.namedItem(key)
     if (!dirtyControls.has(key) && document.activeElement !== input && value != null) input.value = typeof value === 'number' ? Number(value.toFixed(5)) : value
@@ -162,7 +164,7 @@ $('control-form').addEventListener('submit', async event => {
   const button = $('control-form').querySelector('button')
   const form = new FormData(event.currentTarget)
   const expected = []
-  for (const key of ['PID_Kp', 'PID_Ki', 'PID_Kd', 'PID_setpoint', 'CONTROL_MODE']) {
+  for (const key of ['PID_Kp', 'PID_Ki', 'PID_Kd', 'PID_setpoint', 'MOTOR_DUTY_CYCLE_MAX', 'CONTROL_MODE']) {
     let value = form.get(key)
     if (key === 'PID_setpoint') value = Number(value) / DEG
     if (key !== 'CONTROL_MODE' && !Number.isFinite(Number(value))) return note('control-message', `Invalid ${key}.`, true)
@@ -315,14 +317,33 @@ for (const [id, action] of [
   ['reset-zoom', () => setTimeWindow(0, recordingDuration())],
 ]) $(id).addEventListener('click', action)
 
-function chart(title, fields, samples) {
+function chart(title, fields, samples, encoderToggle = false) {
   const card = document.createElement('div')
   card.className = 'chart-card'
   const heading = document.createElement('h3')
   heading.textContent = title
   const host = document.createElement('div')
   host.className = 'chart'
-  card.append(heading, host)
+  if (encoderToggle) {
+    const head = document.createElement('div')
+    head.className = 'chart-card-head'
+    const toggle = document.createElement('button')
+    toggle.type = 'button'
+    toggle.textContent = 'Zero from start'
+    toggle.setAttribute('aria-pressed', 'false')
+    head.append(heading, toggle)
+    card.append(head, host)
+    let zeroed = false
+    toggle.addEventListener('click', () => {
+      zeroed = !zeroed
+      toggle.setAttribute('aria-pressed', String(zeroed))
+      const data = [samples.map((_, i) => i / recording.header.sampleRateHz),
+        ...fields.map(([, key]) => samples.map(sample => sample[key] - (zeroed ? samples[0][key] : 0)))]
+      plot.setData(data, false)
+      plot.setScale('x', { min: timeWindow[0], max: timeWindow[1] })
+      if (selected !== null) plot.setCursor({ left: plot.valToPos(selected / recording.header.sampleRateHz, 'x') })
+    })
+  } else card.append(heading, host)
   $('charts').append(card)
   const colors = ['#86e8ba', '#f0ba79', '#8bc7ed']
   const plot = new uPlot({
@@ -406,7 +427,7 @@ function openRecording(buffer, name) {
   chart('Gyro · degrees per second', [['Gyro', 'gyroDegS']], parsed.samples)
   chart('Motor PWM · + forward / − backward', [['Motor 1', 'motor1SignedPwm'], ['Motor 2', 'motor2SignedPwm']], parsed.samples)
   chart('Control interval · microseconds', [['Interval', 'controlIntervalUs']], parsed.samples)
-  chart('Encoder pulses', [['Motor 1', 'motor1EncoderPulses'], ['Motor 2', 'motor2EncoderPulses']], parsed.samples)
+  chart('Encoder pulses', [['Motor 1', 'motor1EncoderPulses'], ['Motor 2', 'motor2EncoderPulses']], parsed.samples, true)
   setTimeWindow(0, recordingDuration())
   selectSample(0)
 }

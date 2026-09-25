@@ -25,6 +25,7 @@
               <label>Ki <input name="PID_Ki" type="number" step="any" required></label>
               <label>Kd <input name="PID_Kd" type="number" step="any" required></label>
               <label>Pitch setpoint <span class="unit">deg</span><input name="PID_setpoint" type="number" step="any" min="-25" max="25" required></label>
+              <label>Max motor duty cycle <span class="unit">0–255</span><input name="MOTOR_DUTY_CYCLE_MAX" type="number" step="1" min="0" max="255" required></label>
               <label>Control mode <select name="CONTROL_MODE"><option value="MANUAL">MANUAL</option><option value="AUTO">AUTO</option></select></label>
               <button type="submit" class="primary">Apply changed values</button>
             </form>
