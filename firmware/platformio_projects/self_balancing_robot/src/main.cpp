@@ -6,6 +6,7 @@
 #include <cstring>
 #include <array>
 #include <memory>
+#include <cmath>
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -95,7 +96,8 @@ float pitchAngleGyro = 0;             // [rad]
 float pitchAngleEst = 0;              // [rad]
 
 // hardware timer
-const float ALPHA = 0.98;             // gyro weight for complementary filter
+// Preserve the time constant of alpha=0.98 at 100 Hz.
+const float ALPHA = std::pow(0.98f, 100.0f / ESTIMATOR_FREQ);
 hw_timer_t *hwTimer = NULL;
 volatile SemaphoreHandle_t timerSemaphore;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
@@ -104,7 +106,9 @@ QueueHandle_t queueControlCommands;  // commands from the I/O core to the contro
 std::atomic<bool> resetControlTimingRequested {false};
 std::atomic<bool> emergencyStopRequested {false};
 
-const uint TELEMETRY_DECIMATION = 5;  // transmit at 20 Hz when the controller runs at 100 Hz
+constexpr uint32_t TELEMETRY_RATE_HZ = 20;
+static_assert(ESTIMATOR_FREQ >= TELEMETRY_RATE_HZ,
+              "Telemetry rate must not exceed control rate");
 
 // Keep the time-critical control pipeline away from Wi-Fi and web-server work.
 constexpr BaseType_t IO_CORE = 0;
@@ -686,19 +690,21 @@ void taskControlPipeline(void * parameter) {
   ControlTimingPacket_t controlTimingPacket {};
   bool gyroOffsetCalculated = false;
   uint numIMUCalibSamples = 0;
-  const uint totalIMUCalibSamples = 600;
+  const uint totalIMUCalibSamples = 6U * ESTIMATOR_FREQ;  // six seconds
   float gyroOffsetY = 0;
   float pitchAccelOffset = 0;
   long motor1EncoderPulsesLastUpdate = 0;
   long motor2EncoderPulsesLastUpdate = 0;
-  const uint wheelVelocityEstimatorTimeSteps = 25;
-  uint wheelVelocityEstimatorStepCount = wheelVelocityEstimatorTimeSteps;
+  constexpr uint32_t WHEEL_VELOCITY_RATE_HZ = 4;  // 250 ms on average
+  uint32_t wheelVelocityPhase = 0;
   long motor1EncoderPulsesDelta = 0;
   long motor2EncoderPulsesDelta = 0;
   int64_t previousIMUSampleTimeUs = 0;
   int64_t previousControlTimeUs = 0;
   uint32_t controlTimingSampleCount = 0;
-  const uint32_t targetControlIntervalUs = 1000000U / ESTIMATOR_FREQ;
+  const uint32_t targetControlIntervalUs =
+      (1000000U + ESTIMATOR_FREQ / 2U) / ESTIMATOR_FREQ;
+  uint32_t telemetryPhase = ESTIMATOR_FREQ - TELEMETRY_RATE_HZ;
   
   for (;;) {
     if (xSemaphoreTake(timerSemaphore, portMAX_DELAY) == pdTRUE) {
@@ -746,13 +752,13 @@ void taskControlPipeline(void * parameter) {
       pitchAngleEst = ALPHA * (pitchAngleEst + deltaPitchAngleGyro)
           + (1 - ALPHA) * pitchAngleAccel;
 
-      wheelVelocityEstimatorStepCount--;
-      if (wheelVelocityEstimatorStepCount == 0) {
+      wheelVelocityPhase += WHEEL_VELOCITY_RATE_HZ;
+      if (wheelVelocityPhase >= ESTIMATOR_FREQ) {
+        wheelVelocityPhase -= ESTIMATOR_FREQ;
         motor1EncoderPulsesDelta = motor1EncoderPulses - motor1EncoderPulsesLastUpdate;
         motor2EncoderPulsesDelta = motor2EncoderPulses - motor2EncoderPulsesLastUpdate;
         motor1EncoderPulsesLastUpdate = motor1EncoderPulses;
         motor2EncoderPulsesLastUpdate = motor2EncoderPulses;
-        wheelVelocityEstimatorStepCount = wheelVelocityEstimatorTimeSteps;
       }
 
       stateEstimatePacket.pitch_est = pitchAngleEst;
@@ -856,7 +862,9 @@ void taskControlPipeline(void * parameter) {
 
       publishControlStatus(stateEstimatePacket);
 
-      if (packetID % TELEMETRY_DECIMATION == 0) {
+      telemetryPhase += TELEMETRY_RATE_HZ;
+      if (telemetryPhase >= ESTIMATOR_FREQ) {
+        telemetryPhase -= ESTIMATOR_FREQ;
         TelemetryPacket_t telemetryPacket;
         telemetryPacket.header.packetID = packetID;
         telemetryPacket.header.microSecondsSinceBoot = esp_timer_get_time();
@@ -1663,7 +1671,8 @@ void setup(){
 
   hwTimer = timerBegin(/* timer num */ 0, /* clock divider */ 80, /* count up */true);
   timerAttachInterrupt(hwTimer, &stateEstimatorTimer, /* edge */ true);
-  const uint64_t ALARM_PERIOD = 1e6 / ESTIMATOR_FREQ;               // (1 million / 250 Hz = 4000)
+  const uint64_t ALARM_PERIOD =
+      (1000000ULL + ESTIMATOR_FREQ / 2U) / ESTIMATOR_FREQ;
   timerAlarmWrite(hwTimer, ALARM_PERIOD, /* periodic */true);
 
   // verify connection

@@ -169,7 +169,7 @@ The network emergency stop is a software request and is not a substitute for a p
 
 ### Recording telemetry in RAM
 
-The firmware stores up to 20 seconds of 100 Hz telemetry in a fixed 64 KB buffer. Each recording contains pitch, gyro rate, PID output, encoder positions, loop timing, PWM, directions, mode, and estimate-validity flags.
+The firmware stores up to 20 seconds of 150 Hz telemetry in a fixed 96 KB buffer. Each recording contains pitch, gyro rate, PID output, encoder positions, loop timing, PWM, directions, mode, and estimate-validity flags. Serial telemetry remains at 20 Hz on average.
 
 Start a recording while the robot is still in MANUAL:
 
