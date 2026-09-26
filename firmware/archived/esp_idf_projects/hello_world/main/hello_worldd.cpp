@@ -11,6 +11,10 @@
 
 #include "data_structs.h"
 
+#define LOG_LOCAL_LEVEL ESP_LOG_ERROR
+
+// esp_log_level_set("*", ESP_LOG_ERROR);        // set all components to ERROR level
+
 static const char *TAG = "example";
 
 const auto PIN_LED_PWM = GPIO_NUM_2;
@@ -18,10 +22,16 @@ const auto PIN_LED_PWM = GPIO_NUM_2;
 #define EXAMPLE_PCNT_HIGH_LIMIT 100
 #define EXAMPLE_PCNT_LOW_LIMIT  -100
 
-#define EXAMPLE_EC11_GPIO_A 0
-#define EXAMPLE_EC11_GPIO_B 2
+// #define EXAMPLE_EC11_GPIO_A 0
+// #define EXAMPLE_EC11_GPIO_B 2
+
+const auto PIN_ENCODER1A = GPIO_NUM_11;
+const auto PIN_ENCODER1B = GPIO_NUM_12;
 
 #define BUF_SIZE (1024)
+
+DataPacket_t dataPacket;
+// dataPacket.state.motor1EncoderPulses = 0;
 
 
 
@@ -58,7 +68,7 @@ static void echo_task(void *arg)
         packetHeader.packetID = 268;
         packetHeader.microSecondsSinceBoot = esp_timer_get_time();
         
-        DataPacket_t dataPacket;
+        ESP_ERROR_CHECK(pcnt_unit_get_count(pcnt_unit, &pulse_count));
 
         uart_write_bytes(UART_PORT_NUM, &STX, 1);
         uart_write_bytes(UART_PORT_NUM, (uint8_t *) &packetHeader, sizeof( packetHeader ));
@@ -96,14 +106,14 @@ static void pulse_cnt_task(void *arg)
 
     ESP_LOGI(TAG, "install pcnt channels");
     pcnt_chan_config_t chan_a_config = {
-        .edge_gpio_num = EXAMPLE_EC11_GPIO_A,
-        .level_gpio_num = EXAMPLE_EC11_GPIO_B,
+        .edge_gpio_num = PIN_ENCODER1A,
+        .level_gpio_num = PIN_ENCODER1B,
     };
     pcnt_channel_handle_t pcnt_chan_a = NULL;
     ESP_ERROR_CHECK(pcnt_new_channel(pcnt_unit, &chan_a_config, &pcnt_chan_a));
     pcnt_chan_config_t chan_b_config = {
-        .edge_gpio_num = EXAMPLE_EC11_GPIO_B,
-        .level_gpio_num = EXAMPLE_EC11_GPIO_A,
+        .edge_gpio_num = PIN_ENCODER1B,
+        .level_gpio_num = PIN_ENCODER1A,
     };
     pcnt_channel_handle_t pcnt_chan_b = NULL;
     ESP_ERROR_CHECK(pcnt_new_channel(pcnt_unit, &chan_b_config, &pcnt_chan_b));
