@@ -34,3 +34,16 @@ Run the wheel speed calibration script:
 Run the step response script:
 
 `uv run plot_step_response.py`
+
+
+### Mujoco simulation
+
+To activate the env:
+
+`source .venv/bin/activate`
+
+Once the environment is activated, run the viewer:
+
+`python -m mujoco.viewer`
+
+See [this tutorial](https://yasunori.jp/en/2024/07/13/mujoco-model-yourself.html) for more info.
