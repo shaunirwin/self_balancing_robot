@@ -10,6 +10,18 @@ From the repository root, change to the PlatformIO project directory:
 cd firmware/platformio_projects/self_balancing_robot
 ```
 
+The firmware includes `src/secrets.h` for Wi-Fi credentials. On a fresh
+checkout, create it from the tracked template:
+
+```bash
+cp src/secrets_template.h src/secrets.h
+```
+
+Edit `src/secrets.h` and replace `REPLACE_WITH_YOUR_SSID` and
+`REPLACE_WITH_YOUR_PASSWORD` with your network name and password. The project
+ignores `secrets.h` so credentials stay out of commits. Keep the template's
+variable names unchanged; `src/main.cpp` uses them to connect to Wi-Fi.
+
 Build both the robot firmware and the PC serial reader:
 
 ```bash
