@@ -3,10 +3,11 @@ electronics/Freenove_Basic_Starter_Kit_for_ESP32_S3-main/*
 *.step
 *.HEIC
 .idea/
+electronics/code/platformio_projects/self_balancing_robot/.vscode/
 electronics/robot_pcb/fp-info-cache
-electronics/.vscode/settings.json
 *.kicad_sch-bak
 mechanical/parts/*.stl
+electronics/robot_pcb/robot_pcb-backups/*.zip
 
 # untracked libraries
 firmware/archived/Freenove_Basic_Starter_Kit_for_ESP32_S3-main/
