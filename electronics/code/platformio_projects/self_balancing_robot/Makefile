@@ -1,7 +1,7 @@
 PIO ?= $(HOME)/.platformio/penv/bin/pio
 CXX ?= g++
 
-SHARED_INCLUDE := ../../esp_idf_projects/hello_world/main/include
+SHARED_INCLUDE := include
 READ_SERIAL_SOURCE := src/read_serial.cpp
 READ_SERIAL_HEADER := $(SHARED_INCLUDE)/data_structs.h
 READ_SERIAL_BINARY := .pio/read_serial
