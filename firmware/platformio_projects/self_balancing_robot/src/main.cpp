@@ -338,8 +338,11 @@ ControlStatusSnapshot_t controlStatusSnapshot {};
 
 
 void IRAM_ATTR stateEstimatorTimer(){
-  // Give the semaphore to unblock the task
-  xSemaphoreGiveFromISR(timerSemaphore, NULL);
+  BaseType_t higherPriorityTaskWoken = pdFALSE;
+  xSemaphoreGiveFromISR(timerSemaphore, &higherPriorityTaskWoken);
+  if (higherPriorityTaskWoken == pdTRUE) {
+    portYIELD_FROM_ISR();
+  }
 }
 
 const char *recordingStateToStr(const RecordingState state) {
