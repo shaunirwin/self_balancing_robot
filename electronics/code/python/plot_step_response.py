@@ -1,10 +1,14 @@
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
+from pathlib import Path
+
+
+DATA_LOGS = Path(__file__).resolve().parents[3] / 'data' / 'data_logs'
 
 
 # read step response of motors
-df_motors = pd.read_csv('../platformio_projects/self_balancing_robot/src/motorSpinUp.csv', sep=',', header='infer')
+df_motors = pd.read_csv(DATA_LOGS / 'motorSpinUp.csv', sep=',', header='infer')
 
 
 # print(df_motors.head())
@@ -29,7 +33,7 @@ print('motor_time_constant_sec:', motor_time_constant_sec)
 
 # plot step response of robot falling
 
-df_falling = pd.read_csv('../platformio_projects/self_balancing_robot/src/freefall.csv', sep=',', header='infer')
+df_falling = pd.read_csv(DATA_LOGS / 'freefall.csv', sep=',', header='infer')
 
 print(df_falling.head())
 
@@ -52,4 +56,3 @@ falling_time_constant_sec = (146430 - x_start) / 1000.
 print('falling_time_constant_sec:', falling_time_constant_sec)
 
 plt.show()
-

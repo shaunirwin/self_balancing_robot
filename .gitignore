@@ -3,7 +3,7 @@ electronics/Freenove_Basic_Starter_Kit_for_ESP32_S3-main/*
 *.step
 *.HEIC
 .idea/
-electronics/code/platformio_projects/self_balancing_robot/.vscode/
+firmware/platformio_projects/self_balancing_robot/.vscode/
 electronics/robot_pcb/fp-info-cache
 *.kicad_sch-bak
 mechanical/parts/*.stl
@@ -14,5 +14,5 @@ mechanical/parts/*.dxf
 firmware/archived/Freenove_Basic_Starter_Kit_for_ESP32_S3-main/
 
 # generated outputs
-electronics/code/platformio_projects/self_balancing_robot/src/read_serial
+firmware/platformio_projects/self_balancing_robot/src/read_serial
 electronics/cable_harnesses/cable_harness_motor_controller
