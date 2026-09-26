@@ -1242,8 +1242,27 @@ void initWebserver() {
       auto state = std::make_shared<ProtoDownloadState>();
       state->header = header;
       state->count = count;
-      AsyncWebServerResponse *response = request->beginChunkedResponse(
-          "application/x-protobuf",
+      // This pinned ESPAsyncWebServer emits a padded final chunk size that
+      // Node's HTTP parser rejects. Count the deterministic protobuf frames
+      // first, then stream them with Content-Length instead.
+      size_t totalSize = sizeof(PROTO_RECORDING_MAGIC);
+      while (!state->headerEncoded || state->nextIndex < state->count) {
+        if (!encodeNextProtoFrame(*state)) {
+          recordingState.store(RecordingState::READY,
+                               std::memory_order_release);
+          request->send(500, "application/json",
+                        "{\"status\":\"error\",\"message\":\"Recording encoding failed\"}");
+          return;
+        }
+        totalSize += state->frameSize;
+      }
+      state->nextIndex = 0;
+      state->frameSize = 0;
+      state->frameOffset = 0;
+      state->headerEncoded = false;
+
+      AsyncWebServerResponse *response = request->beginResponse(
+          "application/x-protobuf", totalSize,
           [state](uint8_t *buffer, size_t maxLen, size_t) -> size_t {
             size_t copied = 0;
             while (copied < maxLen) {
