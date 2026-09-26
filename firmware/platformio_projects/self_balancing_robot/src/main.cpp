@@ -99,8 +99,6 @@ const float ALPHA = 0.98;             // gyro weight for complementary filter
 hw_timer_t *hwTimer = NULL;
 volatile SemaphoreHandle_t timerSemaphore;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
-QueueHandle_t queueIMU;  // queue of IMU measurements
-QueueHandle_t queueStateEstimates;  // queue of state estimates
 QueueHandle_t queueTelemetry;  // latest telemetry snapshot waiting for serial transmission
 QueueHandle_t queueControlCommands;  // commands from the I/O core to the control core
 std::atomic<bool> resetControlTimingRequested {false};
@@ -112,7 +110,6 @@ const uint TELEMETRY_DECIMATION = 5;  // transmit at 20 Hz when the controller r
 constexpr BaseType_t IO_CORE = 0;
 constexpr BaseType_t CONTROL_CORE = 1;
 constexpr UBaseType_t IO_TASK_PRIORITY = 1;
-constexpr UBaseType_t CONTROL_PIPELINE_PRIORITY = 3;
 constexpr UBaseType_t MOTOR_CONTROL_PRIORITY = 4;
 constexpr float AUTO_ARM_MAX_PITCH_ERROR = 5.0f * M_PI / 180.0f;
 
@@ -420,152 +417,6 @@ uint8_t correctMotor2DutyCycle(const uint8_t dutyCycle) {
   return static_cast<uint8_t>(std::max(std::min(std::round(dutyCycleCorrected), 255.f), 0.f));
 }
 
-// Task to be executed periodically
-void taskReadIMURawValues(void * parameter) {
-    for(;;) {
-        // Wait for the semaphore from the timer ISR
-        if(xSemaphoreTake(timerSemaphore, portMAX_DELAY) == pdTRUE) {
-            IMURawPacket_t imuRawPacket;
-            imu.getMotion6(&(imuRawPacket.ax), &(imuRawPacket.ay), &(imuRawPacket.az), &(imuRawPacket.gx), &(imuRawPacket.gy), &(imuRawPacket.gz));
-            imuRawPacket.temp = imu.getTemperature();
-
-            IMUPacket_t imuPacket;
-
-            // invert accelerometer readings to account for IMU mounted upside down
-            imuPacket.ax = -imuRawPacket.ax * accel_resolution / 2;   // [m/s^2]
-            imuPacket.az = -imuRawPacket.az * accel_resolution / 2;
-            imuPacket.gy = imuRawPacket.gy * gyro_resolution / 2  * PI / 180.;    // [rad/s]
-
-            imuPacket.temp = (float)(imuRawPacket.temp / 340.0 + 36.53);  // formula from datasheet
-
-            if (xQueueSend(queueIMU, &imuPacket, portMAX_DELAY) != pdPASS) {
-                Serial.println("Failed to send to IMU packet queue");
-            }
-        }
-    }
-}
-
-void taskEstimateState(void * parameter) {
-    IMUPacket_t imuPacket;
-    StateEstimatePacket_t stateEstimatePacket;
-    bool gyroOffsetCalculated = false;
-    uint numIMUCalibSamples = 0;
-    const uint totalIMUCalibSamples = 600;
-    float gyroOffsetY = 0;     
-    float pitchAccelOffset = 0;                      // [deg/s]
-    long motor1EncoderPulsesLastUpdate = 0;       // pulses since last state estimator update
-    long motor2EncoderPulsesLastUpdate = 0;
-
-    const uint WHEEL_VELOCITY_ESTIMATOR_TIME_STEPS = 25;  // number of time steps of the estimator period used to calculate wheel velocity over
-    uint wheel_velocity_estimator_step_count = WHEEL_VELOCITY_ESTIMATOR_TIME_STEPS;   // keep track of how many steps since last velocity measurement taken
-    long motor1EncoderPulsesDelta = 0;
-    long motor2EncoderPulsesDelta = 0;
-    uint txCount = 0;    // used for keeping track of frequency of transmitting over serial
-    const uint TX_PERIOD = 1; //10;
-    int64_t previousIMUSampleTimeUs = 0;
-
-    for (;;) {
-        // Wait until data is available in the queue
-        if (xQueueReceive(queueIMU, &imuPacket, portMAX_DELAY) == pdPASS) {
-
-            const int64_t imuSampleTimeUs = esp_timer_get_time();
-            const float elapsedTime = previousIMUSampleTimeUs == 0
-                ? 0.0f
-                : static_cast<float>(imuSampleTimeUs - previousIMUSampleTimeUs) * 1e-6f;  // [s]
-            previousIMUSampleTimeUs = imuSampleTimeUs;
-
-            const float pitchAngleAccelRaw = atan2(imuPacket.ax, imuPacket.az);            // [rad]
-            
-            if (!gyroOffsetCalculated)
-            {
-                // calculate mean iteratively over a period
-                numIMUCalibSamples ++;
-                gyroOffsetY = (imuPacket.gy + (numIMUCalibSamples - 1) * gyroOffsetY) / numIMUCalibSamples;
-                pitchAccelOffset = (pitchAngleAccelRaw + (numIMUCalibSamples - 1) * pitchAccelOffset) / numIMUCalibSamples;
-
-                if (numIMUCalibSamples == totalIMUCalibSamples) {
-                  gyroOffsetCalculated = true;
-                  portENTER_CRITICAL(&imuCalibrationMux);
-                  imuCalibrationSnapshot = {true, gyroOffsetY, pitchAccelOffset};
-                  portEXIT_CRITICAL(&imuCalibrationMux);
-                }
-            }
-
-            const float pitchAngleAccel = pitchAngleAccelRaw - pitchAccelOffset;
-
-            const float pitchAngularRateGyro = imuPacket.gy - gyroOffsetY;          // [rad/s]
-            const float pitchAngularVelocityGyro = -pitchAngularRateGyro;            // [rad/s]
-            const float deltaPitchAngleGyro = pitchAngularVelocityGyro * elapsedTime; // [rad]
-
-            pitchAngleGyro += deltaPitchAngleGyro;
-
-            pitchAngleEst = ALPHA * (pitchAngleEst + deltaPitchAngleGyro) + (1-ALPHA) * pitchAngleAccel;   // [rad]
-
-            // calculate angular velocity of each wheel
-            wheel_velocity_estimator_step_count--;
-            if (wheel_velocity_estimator_step_count == 0)
-            {
-              motor1EncoderPulsesDelta = motor1EncoderPulses - motor1EncoderPulsesLastUpdate;
-              motor2EncoderPulsesDelta = motor2EncoderPulses - motor2EncoderPulsesLastUpdate;
-              motor1EncoderPulsesLastUpdate = motor1EncoderPulses;
-              motor2EncoderPulsesLastUpdate = motor2EncoderPulses;
-
-              // reset counter
-              wheel_velocity_estimator_step_count = WHEEL_VELOCITY_ESTIMATOR_TIME_STEPS;
-            }
-
-            // stateEstimatePacket.pitch_accel = pitchAngleAccel;
-            // stateEstimatePacket.pitch_gyro = pitchAngleGyro;
-            stateEstimatePacket.pitch_est = pitchAngleEst;
-            stateEstimatePacket.motor1EncoderPulses = motor1EncoderPulses;
-            stateEstimatePacket.motor1EncoderPulsesDelta = motor1EncoderPulsesDelta;
-            // stateEstimatePacket.motor1DistanceMeas = motor1EncoderPulses * DISTANCE_PER_PULSE;
-            // stateEstimatePacket.motor1DirMeas = static_cast<signed char>(motor1DirMeas);
-            stateEstimatePacket.motor2EncoderPulses = motor2EncoderPulses;
-            stateEstimatePacket.motor2EncoderPulsesDelta = motor2EncoderPulsesDelta;
-            // stateEstimatePacket.motor2DistanceMeas = motor2EncoderPulses * DISTANCE_PER_PULSE;
-            // stateEstimatePacket.motor2DirMeas = static_cast<signed char>(motor2DirMeas);
-            stateEstimatePacket.pitch_velocity_gyro = pitchAngularVelocityGyro;
-            stateEstimatePacket.estimatesValid = gyroOffsetCalculated;  // valid once IMU readings calibrated
-            
-            txCount ++;
-            if (txCount == TX_PERIOD) {
-              PacketHeader_t packetHeader;
-              packetHeader.packetID = packetID;
-              packetHeader.microSecondsSinceBoot = esp_timer_get_time();
-
-              PitchAngleCalcPacket_t pitchAngleCalcPacket;
-              pitchAngleCalcPacket.gyroOffsetY = gyroOffsetY;
-              pitchAngleCalcPacket.pitchVelocityGyro = pitchAngularRateGyro;
-              pitchAngleCalcPacket.isCalibrated = gyroOffsetCalculated;
-              pitchAngleCalcPacket.pitchAccelRaw = pitchAngleAccelRaw;
-              pitchAngleCalcPacket.pitchAccel = pitchAngleAccel;
-              pitchAngleCalcPacket.pitchGyro = pitchAngleGyro;
-              pitchAngleCalcPacket.pitchEst = pitchAngleEst;
-
-              // DataPacket_t dataPacket;
-              // dataPacket.imu = imuPacket;
-              // dataPacket.pitchInfo = pitchAngleCalcPacket;
-              // dataPacket.state = stateEstimatePacket;
-
-              // Serial.write(STX);
-              // Serial.write( (uint8_t *) &packetHeader, sizeof( packetHeader ) );
-              // Serial.write( (uint8_t *) &dataPacket, sizeof( dataPacket ) );
-              // Serial.write(ETX);
-
-              // appendFile(SD_MMC, "/data_log.bin", "World!\n");
-
-              txCount = 0;
-              // packetID += 1;
-            }
-
-            if (xQueueSend(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) != pdPASS) {
-                Serial.println("Failed to send to state estimate queue");
-            }
-        }
-    }
-}
-
 PIDControlPacket_t calcPID(const float pitch_angle_current, const float pitch_velocity_gyro) {
 
   // Compute the PID output
@@ -829,17 +680,88 @@ ManualControlPacket_t stepMotors(const uint dutyCycleMin, const uint dutyCycleMa
   return p;
 }
 
-void taskControlMotors(void * parameter) {
+void taskControlPipeline(void * parameter) {
   StateEstimatePacket_t stateEstimatePacket;
   ControlPacket_t controlPacket {};
   ControlTimingPacket_t controlTimingPacket {};
+  bool gyroOffsetCalculated = false;
+  uint numIMUCalibSamples = 0;
+  const uint totalIMUCalibSamples = 600;
+  float gyroOffsetY = 0;
+  float pitchAccelOffset = 0;
+  long motor1EncoderPulsesLastUpdate = 0;
+  long motor2EncoderPulsesLastUpdate = 0;
+  const uint wheelVelocityEstimatorTimeSteps = 25;
+  uint wheelVelocityEstimatorStepCount = wheelVelocityEstimatorTimeSteps;
+  long motor1EncoderPulsesDelta = 0;
+  long motor2EncoderPulsesDelta = 0;
+  int64_t previousIMUSampleTimeUs = 0;
   int64_t previousControlTimeUs = 0;
   uint32_t controlTimingSampleCount = 0;
   const uint32_t targetControlIntervalUs = 1000000U / ESTIMATOR_FREQ;
   
   for (;;) {
-    // Wait until data is available in the queue
-    if (xQueueReceive(queueStateEstimates, &stateEstimatePacket, portMAX_DELAY) == pdPASS) {
+    if (xSemaphoreTake(timerSemaphore, portMAX_DELAY) == pdTRUE) {
+      IMURawPacket_t imuRawPacket;
+      imu.getMotion6(&imuRawPacket.ax, &imuRawPacket.ay, &imuRawPacket.az,
+                     &imuRawPacket.gx, &imuRawPacket.gy, &imuRawPacket.gz);
+      imuRawPacket.temp = imu.getTemperature();
+
+      IMUPacket_t imuPacket;
+      // Invert accelerometer readings to account for the upside-down IMU.
+      imuPacket.ax = -imuRawPacket.ax * accel_resolution / 2;
+      imuPacket.az = -imuRawPacket.az * accel_resolution / 2;
+      imuPacket.gy = imuRawPacket.gy * gyro_resolution / 2 * PI / 180.;
+      imuPacket.temp = static_cast<float>(imuRawPacket.temp / 340.0 + 36.53);
+
+      const int64_t imuSampleTimeUs = esp_timer_get_time();
+      const float elapsedTime = previousIMUSampleTimeUs == 0
+          ? 0.0f
+          : static_cast<float>(imuSampleTimeUs - previousIMUSampleTimeUs) * 1e-6f;
+      previousIMUSampleTimeUs = imuSampleTimeUs;
+
+      const float pitchAngleAccelRaw = atan2(imuPacket.ax, imuPacket.az);
+      if (!gyroOffsetCalculated) {
+        numIMUCalibSamples++;
+        gyroOffsetY = (imuPacket.gy + (numIMUCalibSamples - 1) * gyroOffsetY)
+            / numIMUCalibSamples;
+        pitchAccelOffset = (pitchAngleAccelRaw
+            + (numIMUCalibSamples - 1) * pitchAccelOffset)
+            / numIMUCalibSamples;
+
+        if (numIMUCalibSamples == totalIMUCalibSamples) {
+          gyroOffsetCalculated = true;
+          portENTER_CRITICAL(&imuCalibrationMux);
+          imuCalibrationSnapshot = {true, gyroOffsetY, pitchAccelOffset};
+          portEXIT_CRITICAL(&imuCalibrationMux);
+        }
+      }
+
+      const float pitchAngleAccel = pitchAngleAccelRaw - pitchAccelOffset;
+      const float pitchAngularRateGyro = imuPacket.gy - gyroOffsetY;
+      const float pitchAngularVelocityGyro = -pitchAngularRateGyro;
+      const float deltaPitchAngleGyro = pitchAngularVelocityGyro * elapsedTime;
+
+      pitchAngleGyro += deltaPitchAngleGyro;
+      pitchAngleEst = ALPHA * (pitchAngleEst + deltaPitchAngleGyro)
+          + (1 - ALPHA) * pitchAngleAccel;
+
+      wheelVelocityEstimatorStepCount--;
+      if (wheelVelocityEstimatorStepCount == 0) {
+        motor1EncoderPulsesDelta = motor1EncoderPulses - motor1EncoderPulsesLastUpdate;
+        motor2EncoderPulsesDelta = motor2EncoderPulses - motor2EncoderPulsesLastUpdate;
+        motor1EncoderPulsesLastUpdate = motor1EncoderPulses;
+        motor2EncoderPulsesLastUpdate = motor2EncoderPulses;
+        wheelVelocityEstimatorStepCount = wheelVelocityEstimatorTimeSteps;
+      }
+
+      stateEstimatePacket.pitch_est = pitchAngleEst;
+      stateEstimatePacket.motor1EncoderPulses = motor1EncoderPulses;
+      stateEstimatePacket.motor1EncoderPulsesDelta = motor1EncoderPulsesDelta;
+      stateEstimatePacket.motor2EncoderPulses = motor2EncoderPulses;
+      stateEstimatePacket.motor2EncoderPulsesDelta = motor2EncoderPulsesDelta;
+      stateEstimatePacket.pitch_velocity_gyro = pitchAngularVelocityGyro;
+      stateEstimatePacket.estimatesValid = gyroOffsetCalculated;
 
       const int64_t controlTimeUs = esp_timer_get_time();
       if (resetControlTimingRequested.exchange(false)) {
@@ -1720,16 +1642,6 @@ void setup(){
   // Create the semaphore
   timerSemaphore = xSemaphoreCreateBinary();
 
-  queueIMU = xQueueCreate(10, sizeof(IMUPacket_t));
-  if (queueIMU == NULL) {
-      Serial.println("Failed to create queue");
-      while (1);
-  }
-  queueStateEstimates = xQueueCreate(10, sizeof(StateEstimatePacket_t));
-  if (queueStateEstimates == NULL) {
-      Serial.println("Failed to create queue");
-      while (1);
-  }
   queueTelemetry = xQueueCreate(1, sizeof(TelemetryPacket_t));
   if (queueTelemetry == NULL) {
       Serial.println("Failed to create telemetry queue");
@@ -1741,15 +1653,9 @@ void setup(){
       while (1);
   }
 
-  // Create the task that will be executed periodically
+  // One timer-driven task reads the IMU, estimates state, and updates motors.
   xTaskCreatePinnedToCore(
-      taskReadIMURawValues, "Read Raw IMU Values", 10000, NULL,
-      CONTROL_PIPELINE_PRIORITY, NULL, CONTROL_CORE);
-  xTaskCreatePinnedToCore(
-      taskEstimateState, "Estimate State", 2048, NULL,
-      CONTROL_PIPELINE_PRIORITY, NULL, CONTROL_CORE);
-  xTaskCreatePinnedToCore(
-      taskControlMotors, "Control Motors", 2048, NULL,
+      taskControlPipeline, "Control Pipeline", 10000, NULL,
       MOTOR_CONTROL_PRIORITY, NULL, CONTROL_CORE);
   xTaskCreatePinnedToCore(
       taskTransmitTelemetry, "Transmit Telemetry", 2048, NULL,
@@ -1759,7 +1665,6 @@ void setup(){
   timerAttachInterrupt(hwTimer, &stateEstimatorTimer, /* edge */ true);
   const uint64_t ALARM_PERIOD = 1e6 / ESTIMATOR_FREQ;               // (1 million / 250 Hz = 4000)
   timerAlarmWrite(hwTimer, ALARM_PERIOD, /* periodic */true);
-  timerAlarmEnable(hwTimer);
 
   // verify connection
   // Serial.println("Testing device connections...");
@@ -1798,6 +1703,9 @@ void setup(){
   pid.ki = 0.0;
   pid.kd = 0.4;
   pid.inAuto = true;
+
+  // Start sampling only after motor outputs, encoders, and PID are initialized.
+  timerAlarmEnable(hwTimer);
 
   initWiFi();
   initWebserver();
