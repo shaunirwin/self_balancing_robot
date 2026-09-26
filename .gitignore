@@ -8,7 +8,6 @@ electronics/robot_pcb/fp-info-cache
 *.kicad_sch-bak
 mechanical/parts/*.stl
 mechanical/parts/*.3mf
-electronics/robot_pcb/robot_pcb-backups/*.zip
 mechanical/parts/*.dxf
 
 # untracked libraries
