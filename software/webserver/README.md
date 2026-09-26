@@ -1,5 +1,8 @@
 # Laptop dashboard
 
+The current dashboard uses `index.html`, `main.js`, and Vite. Earlier control
+interface experiments are kept in [`archive/`](archive/README.md).
+
 Run from `software/webserver` with Node.js 20.19+ or 22.12+:
 
 ```sh
