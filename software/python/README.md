@@ -4,7 +4,9 @@ This is the README for the Python code for the Self-Balancing Robot.
 
 ## Setup
 
-```
+Run the commands below from `software/python`. Set up the environment first:
+
+```sh
 uv sync
 ```
 
@@ -21,11 +23,7 @@ sudo apt install libxcb-cursor0
 
 ## Run the scripts
 
-**NB: this is deprecated! We now use the C++ script `read_serial.cpp`**
-
-Read data over serial:
-
-`uv run plot_serial.py`
+For live serial data, use the [C++ serial reader](../../firmware/platformio_projects/self_balancing_robot/README.md#to-receive-serial-communication).
 
 Run the wheel speed calibration script:
 
