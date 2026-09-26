@@ -11,5 +11,6 @@ dependencies = [
     "pandas",
     "mujoco",
     "sympy",
-    "control"
+    "control",
+    "protobuf>=7.35.1,<8",
 ]

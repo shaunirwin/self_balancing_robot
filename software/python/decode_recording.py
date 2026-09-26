@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert an SBRLOG1 binary control recording to CSV."""
+"""Convert an SBRPB1 or legacy SBRLOG1 control recording to CSV."""
 
 import argparse
 import csv
@@ -8,10 +8,50 @@ from pathlib import Path
 import struct
 import sys
 
+from google.protobuf.message import DecodeError
+from recording_reader import MAGIC as PROTO_MAGIC, parse_recording
+
 
 HEADER = struct.Struct("<8sHHHHIIffffffBBHIII")
 RECORD = struct.Struct("<IfffiiIBBBB")
 MODE_NAMES = {0: "AUTO", 1: "MANUAL", 2: "FUNCTION"}
+
+
+def decode_protobuf(data: bytes, output_path: Path) -> int:
+    header, samples = parse_recording(data)
+    fieldnames = [
+        "elapsed_s", "pitch_rad", "pitch_deg", "gyro_rad_s",
+        "gyro_deg_s", "pid_output", "motor1_encoder_pulses",
+        "motor2_encoder_pulses", "control_interval_us", "motor1_pwm",
+        "motor2_pwm", "motor1_dir_pin", "motor2_dir_pin",
+        "motor1_forward_command", "motor2_forward_command", "mode",
+        "estimates_valid",
+    ]
+    with output_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for sample in samples:
+            writer.writerow({
+                "elapsed_s": f"{sample.elapsed_us / 1_000_000.0:.6f}",
+                "pitch_rad": f"{sample.pitch_rad:.8f}",
+                "pitch_deg": f"{math.degrees(sample.pitch_rad):.5f}",
+                "gyro_rad_s": f"{sample.gyro_rad_s:.8f}",
+                "gyro_deg_s": f"{math.degrees(sample.gyro_rad_s):.5f}",
+                "pid_output": f"{sample.pid_output:.8f}",
+                "motor1_encoder_pulses": sample.motor1_encoder_pulses,
+                "motor2_encoder_pulses": sample.motor2_encoder_pulses,
+                "control_interval_us": sample.control_interval_us,
+                "motor1_pwm": sample.motor1_pwm,
+                "motor2_pwm": sample.motor2_pwm,
+                "motor1_dir_pin": int(sample.motor1_dir_pin),
+                "motor2_dir_pin": int(sample.motor2_dir_pin),
+                "motor1_forward_command": int(sample.motor1_forward_command),
+                "motor2_forward_command": int(sample.motor2_forward_command),
+                "mode": MODE_NAMES.get(sample.mode, f"UNKNOWN_{sample.mode}"),
+                "estimates_valid": int(sample.estimates_valid),
+            })
+    print(f"Wrote {len(samples)} records ({len(samples) / header.sample_rate_hz:.2f} s) to {output_path}")
+    return 0
 
 
 def main() -> int:
@@ -23,6 +63,8 @@ def main() -> int:
 
     output_path = args.output or args.input.with_suffix(".csv")
     data = args.input.read_bytes()
+    if data.startswith(PROTO_MAGIC):
+        return decode_protobuf(data, output_path)
     if len(data) < HEADER.size:
         raise ValueError("file is too short to contain an SBRLOG1 header")
 
@@ -103,6 +145,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (OSError, ValueError, struct.error) as error:
+    except (OSError, ValueError, struct.error, DecodeError) as error:
         print(f"error: {error}", file=sys.stderr)
         sys.exit(1)

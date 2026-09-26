@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package sbr.recording;
+
+// SBRPB1 file: eight bytes "SBRPB1\0\0", then a varint-length-delimited
+// RecordingHeader, followed by varint-length-delimited RecordingBatch messages.
+// Batches are ordered, contiguous, and together contain record_count samples.
+message RecordingHeader {
+  uint32 format_version = 1; // Must be 1 for SBRPB1.
+  uint32 sample_rate_hz = 2; // Nominal rate; use sample elapsed_us for timing.
+  uint32 record_count = 3;
+  uint32 capacity = 4;
+  float pid_kp = 5;
+  float pid_ki = 6;
+  float pid_kd = 7;
+  float pitch_setpoint_rad = 8;
+  float pitch_error_min_rad = 9;
+  float pitch_error_max_rad = 10;
+  uint32 duty_cycle_min = 11;
+  uint32 duty_cycle_max = 12;
+}
+
+message RecordingBatch {
+  uint32 first_index = 1; // Zero-based index of samples[0].
+  repeated RecordingSample samples = 2; // At most 16 in SBRPB1.
+}
+
+message RecordingSample {
+  enum ControlMode {
+    AUTO = 0;
+    MANUAL = 1;
+    FUNCTION = 2;
+  }
+
+  uint32 elapsed_us = 1; // Monotonic time since recording start.
+  float pitch_rad = 2;
+  float gyro_rad_s = 3;
+  float pid_output = 4;
+  sint32 motor1_encoder_pulses = 5;
+  sint32 motor2_encoder_pulses = 6;
+  uint32 control_interval_us = 7;
+  uint32 motor1_pwm = 8;
+  uint32 motor2_pwm = 9;
+  bool motor1_dir_pin = 10;
+  bool motor2_dir_pin = 11;
+  ControlMode mode = 12;
+  bool estimates_valid = 13;
+  bool motor1_forward_command = 14;
+  bool motor2_forward_command = 15;
+}

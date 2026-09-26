@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
 import './style.css'
-import { parseRecording } from './recording.js'
+import { isProtobufRecording, parseRecording } from './recording.js'
 
 const $ = id => document.getElementById(id)
 const DEG = 180 / Math.PI
@@ -213,12 +213,13 @@ for (const [id, path, message] of [
 $('download-recording').addEventListener('click', async () => {
   $('download-recording').disabled = true
   try {
-    const buffer = await (await api('/recording/download')).arrayBuffer()
-    const blob = new Blob([buffer], { type: 'application/octet-stream' })
+    const buffer = await (await api('/recording/download?format=protobuf')).arrayBuffer()
+    const protobuf = isProtobufRecording(buffer)
+    const blob = new Blob([buffer], { type: protobuf ? 'application/x-protobuf' : 'application/octet-stream' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = 'balance-recording.bin'
+    link.download = protobuf ? 'balance-recording.sbrpb' : 'balance-recording.bin'
     link.click()
     setTimeout(() => URL.revokeObjectURL(url), 60000)
     openRecording(buffer, link.download)
@@ -239,9 +240,9 @@ function selectSample(index) {
   selected = Math.max(0, Math.min(index, recording.samples.length - 1))
   const sample = recording.samples[selected]
   $('sample-slider').value = selected
-  $('sample-label').textContent = `${(selected / recording.header.sampleRateHz).toFixed(3)} s · ${sample.pitchDeg.toFixed(2)}° · ${sample.mode}`
+  $('sample-label').textContent = `${sample.elapsedS.toFixed(3)} s · ${sample.pitchDeg.toFixed(2)}° · ${sample.mode}`
   showPitch(sample.pitchRad, `Recording sample ${selected + 1}`)
-  for (const chart of charts) chart.setCursor({ left: chart.valToPos(selected / recording.header.sampleRateHz, 'x') })
+  for (const chart of charts) chart.setCursor({ left: chart.valToPos(sample.elapsedS, 'x') })
 }
 $('sample-slider').addEventListener('input', event => selectSample(Number(event.target.value)))
 $('live-view').addEventListener('click', () => {
@@ -262,7 +263,20 @@ $('playback').addEventListener('click', () => {
 })
 
 function recordingDuration() {
-  return recording ? Math.max(0, recording.samples.length - 1) / recording.header.sampleRateHz : 0
+  return recording?.samples.length ? recording.samples.at(-1).elapsedS : 0
+}
+
+function nearestSampleIndex(time) {
+  const samples = recording.samples
+  let low = 0
+  let high = samples.length - 1
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2)
+    if (samples[middle].elapsedS < time) low = middle + 1
+    else high = middle
+  }
+  if (low > 0 && Math.abs(samples[low - 1].elapsedS - time) < Math.abs(samples[low].elapsedS - time)) return low - 1
+  return low
 }
 
 function clampTimeWindow(min, max) {
@@ -291,7 +305,7 @@ function setTimeWindow(min, max) {
     if (Math.abs(x.min - next[0]) > 1e-7 || Math.abs(x.max - next[1]) > 1e-7) plot.setScale('x', { min: next[0], max: next[1] })
   }
   if (selected !== null) {
-    for (const plot of charts) plot.setCursor({ left: plot.valToPos(selected / recording.header.sampleRateHz, 'x') })
+    for (const plot of charts) plot.setCursor({ left: plot.valToPos(recording.samples[selected].elapsedS, 'x') })
   }
 }
 
@@ -337,11 +351,11 @@ function chart(title, fields, samples, encoderToggle = false) {
     toggle.addEventListener('click', () => {
       zeroed = !zeroed
       toggle.setAttribute('aria-pressed', String(zeroed))
-      const data = [samples.map((_, i) => i / recording.header.sampleRateHz),
+      const data = [samples.map(sample => sample.elapsedS),
         ...fields.map(([, key]) => samples.map(sample => sample[key] - (zeroed ? samples[0][key] : 0)))]
       plot.setData(data, false)
       plot.setScale('x', { min: timeWindow[0], max: timeWindow[1] })
-      if (selected !== null) plot.setCursor({ left: plot.valToPos(selected / recording.header.sampleRateHz, 'x') })
+      if (selected !== null) plot.setCursor({ left: plot.valToPos(recording.samples[selected].elapsedS, 'x') })
     })
   } else card.append(heading, host)
   $('charts').append(card)
@@ -367,10 +381,10 @@ function chart(title, fields, samples, encoderToggle = false) {
         }
       }],
     },
-  }, [samples.map((_, i) => i / recording.header.sampleRateHz), ...fields.map(([, key]) => samples.map(s => s[key]))], host)
+  }, [samples.map(sample => sample.elapsedS), ...fields.map(([, key]) => samples.map(s => s[key]))], host)
   plot.over.addEventListener('click', event => {
     const x = plot.posToVal(event.clientX - plot.over.getBoundingClientRect().left, 'x')
-    selectSample(Math.round(x * recording.header.sampleRateHz))
+    selectSample(nearestSampleIndex(x))
   })
   plot.over.addEventListener('wheel', event => {
     event.preventDefault()

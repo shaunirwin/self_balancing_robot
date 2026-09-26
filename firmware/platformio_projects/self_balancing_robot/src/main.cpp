@@ -4,11 +4,15 @@
 #include <cstdint>
 #include <atomic>
 #include <cstring>
+#include <array>
+#include <memory>
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
+#include <pb_encode.h>
+#include "recording.pb.h"
 #include "driver/pcnt.h"
 // #include "driver/pulse_cnt.h"
 
@@ -212,6 +216,66 @@ std::atomic<RecordingState> recordingState {RecordingState::EMPTY};
 std::atomic<uint32_t> recordingCount {0};
 int64_t recordingStartTimeUs = 0;
 bool recordingSawAuto = false;
+
+constexpr uint8_t PROTO_RECORDING_MAGIC[8] = {'S', 'B', 'R', 'P', 'B', '1', 0, 0};
+constexpr size_t PROTO_BATCH_SAMPLES = 16;
+constexpr size_t PROTO_FRAME_BUFFER_BYTES = 1280;
+static_assert(PROTO_FRAME_BUFFER_BYTES >= sbr_recording_RecordingBatch_size + 2,
+              "Protobuf batch frame exceeds scratch buffer");
+
+struct ProtoDownloadState {
+  RecordingFileHeader_t header;
+  uint32_t count;
+  uint32_t nextIndex = 0;
+  size_t magicOffset = 0;
+  size_t frameSize = 0;
+  size_t frameOffset = 0;
+  bool headerEncoded = false;
+  std::array<uint8_t, PROTO_FRAME_BUFFER_BYTES> frame {};
+};
+
+bool encodeNextProtoFrame(ProtoDownloadState &state) {
+  pb_ostream_t stream = pb_ostream_from_buffer(state.frame.data(), state.frame.size());
+  if (!state.headerEncoded) {
+    const sbr_recording_RecordingHeader header {
+      1, state.header.sample_rate_hz, state.count, state.header.capacity,
+      state.header.pid_kp, state.header.pid_ki, state.header.pid_kd,
+      state.header.pitch_setpoint_rad, state.header.pitch_error_min_rad,
+      state.header.pitch_error_max_rad, state.header.duty_cycle_min,
+      state.header.duty_cycle_max,
+    };
+    if (!pb_encode_ex(&stream, sbr_recording_RecordingHeader_fields,
+                      &header, PB_ENCODE_DELIMITED)) return false;
+    state.headerEncoded = true;
+  } else {
+    if (state.nextIndex >= state.count) return false;
+    sbr_recording_RecordingBatch batch {};
+    batch.first_index = state.nextIndex;
+    batch.samples_count = std::min<size_t>(
+        PROTO_BATCH_SAMPLES, state.count - state.nextIndex);
+    for (size_t i = 0; i < batch.samples_count; ++i) {
+      const RecordingRecord_t &source = recordingBuffer[state.nextIndex + i];
+      batch.samples[i] = {
+        source.elapsed_us, source.pitch_rad, source.gyro_rad_s,
+        source.pid_output, source.motor1_encoder_pulses,
+        source.motor2_encoder_pulses, source.control_interval_us,
+        source.motor1_pwm, source.motor2_pwm,
+        static_cast<bool>(source.flags & 1U),
+        static_cast<bool>((source.flags >> 1) & 1U),
+        static_cast<sbr_recording_RecordingSample_ControlMode>((source.flags >> 2) & 3U),
+        static_cast<bool>((source.flags >> 4) & 1U),
+        static_cast<bool>((source.flags >> 5) & 1U),
+        static_cast<bool>((source.flags >> 6) & 1U),
+      };
+    }
+    if (!pb_encode_ex(&stream, sbr_recording_RecordingBatch_fields,
+                      &batch, PB_ENCODE_DELIMITED)) return false;
+    state.nextIndex += batch.samples_count;
+  }
+  state.frameSize = stream.bytes_written;
+  state.frameOffset = 0;
+  return true;
+}
 
 // PID controller
 PropIntDiff pid(-1.f, 1.f, 1.f);
@@ -1148,6 +1212,13 @@ void initWebserver() {
   });
 
   server.on("/recording/download", HTTP_GET, [](AsyncWebServerRequest *request){
+    const String format = request->hasParam("format")
+        ? request->getParam("format")->value() : "legacy";
+    if (format != "legacy" && format != "protobuf") {
+      request->send(400, "application/json",
+                    "{\"status\":\"error\",\"message\":\"Unknown recording format\"}");
+      return;
+    }
     RecordingState expected = RecordingState::READY;
     if (!recordingState.compare_exchange_strong(
             expected, RecordingState::DOWNLOADING,
@@ -1167,6 +1238,57 @@ void initWebserver() {
 
     RecordingFileHeader_t header = recordingHeader;
     header.record_count = count;
+    if (format == "protobuf") {
+      auto state = std::make_shared<ProtoDownloadState>();
+      state->header = header;
+      state->count = count;
+      AsyncWebServerResponse *response = request->beginChunkedResponse(
+          "application/x-protobuf",
+          [state](uint8_t *buffer, size_t maxLen, size_t) -> size_t {
+            size_t copied = 0;
+            while (copied < maxLen) {
+              if (state->magicOffset < sizeof(PROTO_RECORDING_MAGIC)) {
+                const size_t bytes = std::min(
+                    maxLen - copied, sizeof(PROTO_RECORDING_MAGIC) - state->magicOffset);
+                std::memcpy(buffer + copied,
+                            PROTO_RECORDING_MAGIC + state->magicOffset, bytes);
+                state->magicOffset += bytes;
+                copied += bytes;
+                continue;
+              }
+              if (state->frameOffset == state->frameSize) {
+                if (state->headerEncoded && state->nextIndex >= state->count) {
+                  recordingState.store(RecordingState::READY,
+                                       std::memory_order_release);
+                  break;
+                }
+                if (!encodeNextProtoFrame(*state)) {
+                  Serial.println("Failed to encode protobuf recording frame");
+                  recordingState.store(RecordingState::READY,
+                                       std::memory_order_release);
+                  break;
+                }
+              }
+              const size_t bytes = std::min(
+                  maxLen - copied, state->frameSize - state->frameOffset);
+              std::memcpy(buffer + copied,
+                          state->frame.data() + state->frameOffset, bytes);
+              state->frameOffset += bytes;
+              copied += bytes;
+            }
+            return copied;
+          });
+      response->addHeader("Content-Disposition",
+                          "attachment; filename=balance-recording.sbrpb");
+      response->addHeader("Cache-Control", "no-store");
+      request->onDisconnect([](){
+        RecordingState downloading = RecordingState::DOWNLOADING;
+        recordingState.compare_exchange_strong(
+            downloading, RecordingState::READY, std::memory_order_acq_rel);
+      });
+      request->send(response);
+      return;
+    }
     const size_t recordsSize = count * sizeof(RecordingRecord_t);
     const size_t totalSize = sizeof(RecordingFileHeader_t) + recordsSize;
 

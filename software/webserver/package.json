@@ -8,6 +8,7 @@
     "build": "vite build"
   },
   "dependencies": {
+    "protobufjs": "^7.5.4",
     "three": "^0.180.0",
     "uplot": "^1.6.32"
   },
