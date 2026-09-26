@@ -1,6 +1,6 @@
 # Laptop dashboard
 
-Run from `electronics/code/webserver` with Node.js 20.19+ or 22.12+:
+Run from `software/webserver` with Node.js 20.19+ or 22.12+:
 
 ```sh
 npm install

@@ -4,7 +4,7 @@ import pandas as pd
 from pathlib import Path
 
 
-DATA_LOGS = Path(__file__).resolve().parents[3] / 'data' / 'data_logs'
+DATA_LOGS = Path(__file__).resolve().parents[2] / 'data' / 'data_logs'
 
 
 # read step response of motors

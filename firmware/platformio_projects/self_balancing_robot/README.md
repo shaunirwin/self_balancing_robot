@@ -181,7 +181,7 @@ The recording also stops when the buffer fills or AUTO disarms. Once the status 
 
 ```bash
 curl -o balance-recording.bin "$ROBOT/recording/download"
-python3 ../../../electronics/code/python/decode_recording.py balance-recording.bin
+python3 ../../../software/python/decode_recording.py balance-recording.bin
 ```
 
 The decoder writes `balance-recording.csv`, which can be plotted or inspected with standard tools. Only one completed recording is retained; starting a new recording overwrites the previous one. Recordings are held in volatile RAM and are lost if the ESP32 resets or loses power.
