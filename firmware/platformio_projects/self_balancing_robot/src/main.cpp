@@ -141,6 +141,7 @@ typedef struct {
   uint32_t uintValue;
   ControlMode controlMode;
   MotorDirection motorDirection;
+  char recordingStartedAt[16];  // YYYYMMDD-HHMMSS from the HTTP client
 } ControlCommand_t;
 
 typedef struct {
@@ -224,6 +225,7 @@ std::atomic<RecordingState> recordingState {RecordingState::EMPTY};
 std::atomic<uint32_t> recordingCount {0};
 int64_t recordingStartTimeUs = 0;
 bool recordingSawAuto = false;
+char recordingStartedAt[16] = {};
 sbr_recording_RecordingSettings recordingSettingsAtStart {};
 bool recordingSettingsChanged = false;
 
@@ -355,7 +357,21 @@ const char *recordingStateToStr(const RecordingState state) {
   return "UNKNOWN";
 }
 
-bool startRecording() {
+bool validRecordingStartedAt(const String &value) {
+  if (value.length() != 15 || value[8] != '-') return false;
+  for (size_t i = 0; i < 15; ++i) {
+    if (i != 8 && (value[i] < '0' || value[i] > '9')) return false;
+  }
+  const int month = value.substring(4, 6).toInt();
+  const int day = value.substring(6, 8).toInt();
+  const int hour = value.substring(9, 11).toInt();
+  const int minute = value.substring(11, 13).toInt();
+  const int second = value.substring(13, 15).toInt();
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31
+      && hour <= 23 && minute <= 59 && second <= 59;
+}
+
+bool startRecording(const char *startedAt) {
   if (recordingState.load(std::memory_order_acquire)
       == RecordingState::DOWNLOADING) {
     return false;
@@ -399,6 +415,7 @@ bool startRecording() {
 
   recordingCount.store(0, std::memory_order_relaxed);
   recordingStartTimeUs = esp_timer_get_time();
+  std::memcpy(recordingStartedAt, startedAt, sizeof(recordingStartedAt));
   recordingSawAuto = false;
   recordingState.store(RecordingState::RECORDING, std::memory_order_release);
   return true;
@@ -563,7 +580,7 @@ void applyControlCommand(const ControlCommand_t &command,
       dutyCycle2Manual = static_cast<uint8_t>(command.uintValue);
       break;
     case ControlCommandType::START_RECORDING:
-      startRecording();
+      startRecording(command.recordingStartedAt);
       break;
     case ControlCommandType::STOP_RECORDING:
       stopRecording();
@@ -1158,6 +1175,16 @@ void initWebserver() {
 
     ControlCommand_t command {};
     command.type = ControlCommandType::START_RECORDING;
+    if (request->hasParam("started_at", true)) {
+      const String startedAt = request->getParam("started_at", true)->value();
+      if (!validRecordingStartedAt(startedAt)) {
+        request->send(400, "application/json",
+                      "{\"status\":\"error\",\"message\":\"Invalid started_at; expected YYYYMMDD-HHMMSS\"}");
+        return;
+      }
+      startedAt.toCharArray(command.recordingStartedAt,
+                            sizeof(command.recordingStartedAt));
+    }
     if (!enqueueControlCommand(command)) {
       request->send(503, "application/json",
                     "{\"status\":\"error\",\"message\":\"Control command queue full\"}");
@@ -1292,8 +1319,11 @@ void initWebserver() {
             }
             return copied;
           });
+      const String filename = recordingStartedAt[0]
+          ? String(recordingStartedAt) + "_recording.sbrpb"
+          : "balance-recording.sbrpb";
       response->addHeader("Content-Disposition",
-                          "attachment; filename=balance-recording.sbrpb");
+                          String("attachment; filename=\"") + filename + "\"");
       response->addHeader("Cache-Control", "no-store");
       request->onDisconnect([](){
         RecordingState downloading = RecordingState::DOWNLOADING;

@@ -199,13 +199,22 @@ $('emergency').addEventListener('click', async () => {
   catch (error) { note('control-message', error.message, true) }
 })
 
+function localRecordingTimestamp(date) {
+  const twoDigits = value => String(value).padStart(2, '0')
+  return `${date.getFullYear()}${twoDigits(date.getMonth() + 1)}${twoDigits(date.getDate())}-${twoDigits(date.getHours())}${twoDigits(date.getMinutes())}${twoDigits(date.getSeconds())}`
+}
+
 for (const [id, path, message] of [
   ['start-recording', '/recording/start', 'Recording start queued.'],
   ['stop-recording', '/recording/stop', 'Recording stop queued.'],
 ]) {
   $(id).addEventListener('click', async () => {
     $(id).disabled = true
-    try { await json(path, { method: 'POST' }); note('recording-message', message); await poll() }
+    const options = { method: 'POST' }
+    if (id === 'start-recording') {
+      options.body = new URLSearchParams({ started_at: localRecordingTimestamp(new Date()) })
+    }
+    try { await json(path, options); note('recording-message', message); await poll() }
     catch (error) { note('recording-message', error.message, true) }
   })
 }
@@ -213,13 +222,15 @@ for (const [id, path, message] of [
 $('download-recording').addEventListener('click', async () => {
   $('download-recording').disabled = true
   try {
-    const buffer = await (await api('/recording/download?format=protobuf')).arrayBuffer()
+    const response = await api('/recording/download?format=protobuf')
+    const filename = response.headers.get('Content-Disposition')?.match(/filename="?(\d{8}-\d{6}_recording\.sbrpb)"?/)?.[1]
+    const buffer = await response.arrayBuffer()
     const protobuf = isProtobufRecording(buffer)
     const blob = new Blob([buffer], { type: protobuf ? 'application/x-protobuf' : 'application/octet-stream' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = protobuf ? 'balance-recording.sbrpb' : 'balance-recording.bin'
+    link.download = protobuf ? (filename || 'balance-recording.sbrpb') : 'balance-recording.bin'
     link.click()
     setTimeout(() => URL.revokeObjectURL(url), 60000)
     openRecording(buffer, link.download)

@@ -171,11 +171,13 @@ The network emergency stop is a software request and is not a substitute for a p
 
 The firmware stores up to 20 seconds of 150 Hz telemetry in a fixed 96 KB buffer. Each recording contains pitch, gyro rate, PID output, encoder positions, loop timing, PWM, directions, mode, and estimate-validity flags. Serial telemetry remains at 20 Hz on average.
 
-Start a recording while the robot is still in MANUAL:
+Start a recording while the robot is still in MANUAL. The dashboard sends its local start time automatically. For HTTP clients, send `started_at` to name the protobuf download from the recording start time:
 
 ```bash
-curl -X POST "$ROBOT/recording/start"
+curl -X POST --data-urlencode "started_at=$(date +%Y%m%d-%H%M%S)" "$ROBOT/recording/start"
 ```
+
+The resulting protobuf filename is `YYYYMMDD-HHMMSS_recording.sbrpb`. If `started_at` is omitted, the download keeps the generic `balance-recording.sbrpb` name. The ESP32 has no configured wall clock; the timestamp comes from the client that starts the recording.
 
 Check its progress:
 
@@ -192,11 +194,11 @@ curl -X POST "$ROBOT/recording/stop"
 The recording also stops when the buffer fills or AUTO disarms. Once the status reports `"state": "READY"`, download and decode it:
 
 ```bash
-curl -o balance-recording.sbrpb "$ROBOT/recording/download?format=protobuf"
-../../../software/python/.venv/bin/python ../../../software/python/decode_recording.py balance-recording.sbrpb
+curl -OJ "$ROBOT/recording/download?format=protobuf"
+../../../software/python/.venv/bin/python ../../../software/python/decode_recording.py YYYYMMDD-HHMMSS_recording.sbrpb
 ```
 
-The decoder writes `balance-recording.csv`, which can be plotted or inspected with standard tools. Python scripts can call `recording_reader.read_recording(path)` to read the protobuf metadata and samples directly. The schema is in `../../../proto/recording.proto`. The robot keeps fixed 32-byte records in RAM and encodes protobuf in small batches only during download. The old `/recording/download` endpoint still serves `SBRLOG1` `.bin` files, which the decoder and dashboard can still read. Only one completed recording is retained; starting a new recording overwrites the previous one. Recordings are held in volatile RAM and are lost if the ESP32 resets or loses power.
+The decoder writes a CSV with the same base name as the downloaded recording, which can be plotted or inspected with standard tools. Python scripts can call `recording_reader.read_recording(path)` to read the protobuf metadata and samples directly. The schema is in `../../../proto/recording.proto`. The robot keeps fixed 32-byte records in RAM and encodes protobuf in small batches only during download. The old `/recording/download` endpoint still serves `SBRLOG1` `.bin` files, which the decoder and dashboard can still read. Only one completed recording is retained; starting a new recording overwrites the previous one. Recordings are held in volatile RAM and are lost if the ESP32 resets or loses power.
 
 Protobuf headers also contain a settings snapshot taken when the control task
 processes Start, the build Git revision (or `unknown`), and a flag that turns
