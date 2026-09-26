@@ -379,6 +379,9 @@ function chart(title, fields, samples, encoderToggle = false) {
     legend: { show: true },
     cursor: {
       sync: { key: 'sbr-recording', scales: ['x', null], setSeries: false },
+      // uPlot's default double-click handler auto-scales only the chart that
+      // received the event. The dashboard owns one shared x range instead.
+      bind: { dblclick: () => () => {} },
       drag: {
         x: true, y: false, dist: 8,
         click: (_plot, event) => event.stopPropagation(),
@@ -396,6 +399,10 @@ function chart(title, fields, samples, encoderToggle = false) {
   plot.over.addEventListener('click', event => {
     const x = plot.posToVal(event.clientX - plot.over.getBoundingClientRect().left, 'x')
     selectSample(nearestSampleIndex(x))
+  })
+  plot.over.addEventListener('dblclick', event => {
+    event.preventDefault()
+    setTimeWindow(0, recordingDuration())
   })
   plot.over.addEventListener('wheel', event => {
     event.preventDefault()
