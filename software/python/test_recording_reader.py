@@ -1,7 +1,12 @@
 """Format checks using the generated Python protobuf classes."""
 
 import unittest
+import struct
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
+import decode_recording
 from recording_pb2 import RecordingBatch, RecordingHeader
 from recording_reader import MAGIC, parse_recording
 
@@ -42,6 +47,50 @@ def example_recording() -> bytes:
 
 
 class RecordingReaderTest(unittest.TestCase):
+    def test_legacy_binary_decoder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "old.bin"
+            target = Path(directory) / "old.csv"
+            source.write_bytes(struct.pack(
+                "<8sHHHHIIffffffBBHIII", b"SBRLOG1", 1, 64, 32, 100,
+                1, 2000, 18, 0, 0.4, 0, 0.01, 0.17, 35, 160,
+                0, 0, 0, 0,
+            ) + struct.pack("<IfffiiIBBBB", 0, 0, 0, 0, 0, 0,
+                            10000, 0, 0, 0, 0))
+            with patch("sys.argv", ["decode_recording.py", str(source), str(target)]):
+                self.assertEqual(decode_recording.main(), 0)
+            self.assertIn("elapsed_s", target.read_text())
+
+    def test_settings_snapshot_and_older_header(self):
+        old_header, _ = parse_recording(example_recording())
+        self.assertFalse(old_header.HasField("settings_at_start"))
+        self.assertFalse(old_header.settings_changed_during_recording)
+
+        header = RecordingHeader(format_version=1, sample_rate_hz=100,
+                                 record_count=0, capacity=2000,
+                                 firmware_revision="abc123")
+        settings = header.settings_at_start
+        settings.pid_kp = 18.0
+        settings.pid_output_min = -1.0
+        settings.pwm_frequency_hz = 30000
+        settings.wheel_diameter_m = 0.0618
+        settings.imu_calibration_valid = False
+        data = MAGIC + _frame(header)
+        self.assertLessEqual(len(header.SerializeToString()), 1024)
+        parsed, _ = parse_recording(data)
+        self.assertTrue(parsed.HasField("settings_at_start"))
+        self.assertFalse(parsed.settings_changed_during_recording)
+        self.assertFalse(parsed.settings_at_start.imu_calibration_valid)
+        self.assertEqual(parsed.settings_at_start.imu_gyro_y_offset_rad_s, 0)
+
+        header.settings_changed_during_recording = True
+        header.settings_at_start.imu_calibration_valid = True
+        header.settings_at_start.imu_gyro_y_offset_rad_s = 0.03
+        changed, _ = parse_recording(MAGIC + _frame(header))
+        self.assertTrue(changed.settings_changed_during_recording)
+        self.assertTrue(changed.settings_at_start.imu_calibration_valid)
+        self.assertAlmostEqual(changed.settings_at_start.imu_gyro_y_offset_rad_s, 0.03)
+
     def test_values(self):
         header, samples = parse_recording(example_recording())
         self.assertEqual((header.sample_rate_hz, header.record_count), (100, 2))

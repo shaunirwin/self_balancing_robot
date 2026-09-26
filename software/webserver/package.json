@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "test:recording": "node test-recording.mjs"
   },
   "dependencies": {
     "protobufjs": "^7.5.4",

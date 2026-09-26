@@ -46,6 +46,9 @@ function parseProtobufRecording(buffer) {
     setpointRad: meta.pitchSetpointRad, pitchErrorMinRad: meta.pitchErrorMinRad,
     pitchErrorMaxRad: meta.pitchErrorMaxRad, dutyMin: meta.dutyCycleMin,
     dutyMax: meta.dutyCycleMax,
+    settingsAtStart: meta.settingsAtStart || null,
+    firmwareRevision: meta.firmwareRevision || null,
+    settingsChangedDuringRecording: Boolean(meta.settingsChangedDuringRecording),
   }
   const samples = []
   while (samples.length < header.count) {
@@ -101,6 +104,7 @@ export function parseRecording(buffer) {
     kp: view.getFloat32(24, true), ki: view.getFloat32(28, true), kd: view.getFloat32(32, true),
     setpointRad: view.getFloat32(36, true), pitchErrorMinRad: view.getFloat32(40, true),
     pitchErrorMaxRad: view.getFloat32(44, true), dutyMin: view.getUint8(48), dutyMax: view.getUint8(49),
+    settingsAtStart: null, firmwareRevision: null, settingsChangedDuringRecording: false,
   }
   const samples = Array.from({ length: count }, (_, index) => {
     const o = headerSize + index * recordSize

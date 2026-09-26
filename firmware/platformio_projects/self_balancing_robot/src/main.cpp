@@ -68,6 +68,13 @@ const int PWM_RESOLUTION = 8;       // set PWM resolution
 const bool MOTOR_1_DIR_INVERT = false;
 const bool MOTOR_2_DIR_INVERT = true;
 const bool MOTOR_COAST = false;
+constexpr float MOTOR1_SPEED_SLOPE = 0.0014799539967724955f;
+constexpr float MOTOR1_SPEED_INTERCEPT = -0.0036162999881075696f;
+constexpr float MOTOR2_SPEED_SLOPE = 0.0014670524848993663f;
+constexpr float MOTOR2_SPEED_INTERCEPT = -0.004342195129313476f;
+#ifndef SBR_FIRMWARE_REVISION
+#define SBR_FIRMWARE_REVISION "unknown"
+#endif
 
 bool ledStatus = true;
 
@@ -216,15 +223,29 @@ std::atomic<RecordingState> recordingState {RecordingState::EMPTY};
 std::atomic<uint32_t> recordingCount {0};
 int64_t recordingStartTimeUs = 0;
 bool recordingSawAuto = false;
+sbr_recording_RecordingSettings recordingSettingsAtStart {};
+bool recordingSettingsChanged = false;
+
+struct IMUCalibrationSnapshot {
+  bool valid;
+  float gyroYOffsetRadS;
+  float pitchAccelOffsetRad;
+};
+portMUX_TYPE imuCalibrationMux = portMUX_INITIALIZER_UNLOCKED;
+IMUCalibrationSnapshot imuCalibrationSnapshot {};
 
 constexpr uint8_t PROTO_RECORDING_MAGIC[8] = {'S', 'B', 'R', 'P', 'B', '1', 0, 0};
 constexpr size_t PROTO_BATCH_SAMPLES = 16;
 constexpr size_t PROTO_FRAME_BUFFER_BYTES = 1280;
 static_assert(PROTO_FRAME_BUFFER_BYTES >= sbr_recording_RecordingBatch_size + 2,
               "Protobuf batch frame exceeds scratch buffer");
+static_assert(sbr_recording_RecordingHeader_size <= 1024,
+              "Protobuf header exceeds reader frame limit");
 
 struct ProtoDownloadState {
   RecordingFileHeader_t header;
+  sbr_recording_RecordingSettings settings;
+  bool settingsChanged;
   uint32_t count;
   uint32_t nextIndex = 0;
   size_t magicOffset = 0;
@@ -237,13 +258,24 @@ struct ProtoDownloadState {
 bool encodeNextProtoFrame(ProtoDownloadState &state) {
   pb_ostream_t stream = pb_ostream_from_buffer(state.frame.data(), state.frame.size());
   if (!state.headerEncoded) {
-    const sbr_recording_RecordingHeader header {
-      1, state.header.sample_rate_hz, state.count, state.header.capacity,
-      state.header.pid_kp, state.header.pid_ki, state.header.pid_kd,
-      state.header.pitch_setpoint_rad, state.header.pitch_error_min_rad,
-      state.header.pitch_error_max_rad, state.header.duty_cycle_min,
-      state.header.duty_cycle_max,
-    };
+    sbr_recording_RecordingHeader header {};
+    header.format_version = 1;
+    header.sample_rate_hz = state.header.sample_rate_hz;
+    header.record_count = state.count;
+    header.capacity = state.header.capacity;
+    header.pid_kp = state.header.pid_kp;
+    header.pid_ki = state.header.pid_ki;
+    header.pid_kd = state.header.pid_kd;
+    header.pitch_setpoint_rad = state.header.pitch_setpoint_rad;
+    header.pitch_error_min_rad = state.header.pitch_error_min_rad;
+    header.pitch_error_max_rad = state.header.pitch_error_max_rad;
+    header.duty_cycle_min = state.header.duty_cycle_min;
+    header.duty_cycle_max = state.header.duty_cycle_max;
+    header.has_settings_at_start = true;
+    header.settings_at_start = state.settings;
+    std::strncpy(header.firmware_revision, SBR_FIRMWARE_REVISION,
+                 sizeof(header.firmware_revision) - 1);
+    header.settings_changed_during_recording = state.settingsChanged;
     if (!pb_encode_ex(&stream, sbr_recording_RecordingHeader_fields,
                       &header, PB_ENCODE_DELIMITED)) return false;
     state.headerEncoded = true;
@@ -343,6 +375,24 @@ bool startRecording() {
   recordingHeader.flags = 0;
   std::memset(recordingHeader.reserved, 0, sizeof(recordingHeader.reserved));
 
+  IMUCalibrationSnapshot calibration;
+  portENTER_CRITICAL(&imuCalibrationMux);
+  calibration = imuCalibrationSnapshot;
+  portEXIT_CRITICAL(&imuCalibrationMux);
+  recordingSettingsAtStart = {
+    pid.kp, pid.ki, pid.kd, pid.MIN, pid.MAX, pid.ITermThreshold,
+    pitch_angle_setpoint, PITCH_ANGLE_ERROR_MIN, PITCH_ANGLE_ERROR_MAX,
+    AUTO_ARM_MAX_PITCH_ERROR, ALPHA, DUTY_CYCLE_MIN, DUTY_CYCLE_MAX,
+    MOTOR1_SPEED_SLOPE, MOTOR1_SPEED_INTERCEPT,
+    MOTOR2_SPEED_SLOPE, MOTOR2_SPEED_INTERCEPT,
+    MOTOR_1_DIR_INVERT, MOTOR_2_DIR_INVERT, MOTOR_COAST,
+    PWM_FREQ, PWM_RESOLUTION, WHEEL_DIAMETER,
+    ENCODER_PULSES_PER_REVOLUTION, calibration.valid,
+    calibration.valid ? calibration.gyroYOffsetRadS : 0.0f,
+    calibration.valid ? calibration.pitchAccelOffsetRad : 0.0f,
+  };
+  recordingSettingsChanged = false;
+
   recordingCount.store(0, std::memory_order_relaxed);
   recordingStartTimeUs = esp_timer_get_time();
   recordingSawAuto = false;
@@ -364,12 +414,8 @@ void stopRecording() {
 uint8_t correctMotor2DutyCycle(const uint8_t dutyCycle) {
   // correct motor 2's commanded duty cycle to ensure resultant speed is same as motor 1 when commanded to have the same duty cycle
 
-  const float m1 = 0.0014799539967724955f;   // slope motor 1 graph of speed as a function of duty cycle
-  const float b1 = -0.0036162999881075696f;   // intercept motor 1 graph of speed as a function of duty cycle
-  const float m2 = 0.0014670524848993663f;   // slope motor 2 graph of speed as a function of duty cycle
-  const float b2 = -0.004342195129313476f;  // intercept motor 2 graph of speed as a function of duty cycle
-
-  const float dutyCycleCorrected = ((m1 * dutyCycle + b1) - b2) / m2;
+  const float dutyCycleCorrected = ((MOTOR1_SPEED_SLOPE * dutyCycle + MOTOR1_SPEED_INTERCEPT)
+      - MOTOR2_SPEED_INTERCEPT) / MOTOR2_SPEED_SLOPE;
 
   return static_cast<uint8_t>(std::max(std::min(std::round(dutyCycleCorrected), 255.f), 0.f));
 }
@@ -439,6 +485,9 @@ void taskEstimateState(void * parameter) {
 
                 if (numIMUCalibSamples == totalIMUCalibSamples) {
                   gyroOffsetCalculated = true;
+                  portENTER_CRITICAL(&imuCalibrationMux);
+                  imuCalibrationSnapshot = {true, gyroOffsetY, pitchAccelOffset};
+                  portEXIT_CRITICAL(&imuCalibrationMux);
                 }
             }
 
@@ -591,6 +640,10 @@ void stopMotors() {
 
 void applyControlCommand(const ControlCommand_t &command,
                          const StateEstimatePacket_t &stateEstimatePacket) {
+  const float previousKp = pid.kp, previousKi = pid.ki, previousKd = pid.kd;
+  const float previousSetpoint = pitch_angle_setpoint;
+  const uint previousDutyMin = DUTY_CYCLE_MIN, previousDutyMax = DUTY_CYCLE_MAX;
+  const float previousErrorMin = PITCH_ANGLE_ERROR_MIN, previousErrorMax = PITCH_ANGLE_ERROR_MAX;
   switch (command.type) {
     case ControlCommandType::SET_PID_KP:
       pid.kp = command.floatValue;
@@ -657,6 +710,13 @@ void applyControlCommand(const ControlCommand_t &command,
     case ControlCommandType::STOP_RECORDING:
       stopRecording();
       break;
+  }
+  if (recordingState.load(std::memory_order_acquire) == RecordingState::RECORDING &&
+      (previousKp != pid.kp || previousKi != pid.ki || previousKd != pid.kd ||
+       previousSetpoint != pitch_angle_setpoint ||
+       previousDutyMin != DUTY_CYCLE_MIN || previousDutyMax != DUTY_CYCLE_MAX ||
+       previousErrorMin != PITCH_ANGLE_ERROR_MIN || previousErrorMax != PITCH_ANGLE_ERROR_MAX)) {
+    recordingSettingsChanged = true;
   }
 }
 
@@ -1241,6 +1301,8 @@ void initWebserver() {
     if (format == "protobuf") {
       auto state = std::make_shared<ProtoDownloadState>();
       state->header = header;
+      state->settings = recordingSettingsAtStart;
+      state->settingsChanged = recordingSettingsChanged;
       state->count = count;
       // This pinned ESPAsyncWebServer emits a padded final chunk size that
       // Node's HTTP parser rejects. Count the deterministic protobuf frames

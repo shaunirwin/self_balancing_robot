@@ -429,6 +429,7 @@ function openRecording(buffer, name) {
   $('file-name').textContent = name
   $('file-summary').classList.remove('error')
   $('file-summary').textContent = `${parsed.header.count.toLocaleString()} samples · ${parsed.header.sampleRateHz} Hz · Kp ${parsed.header.kp.toFixed(3)}, Ki ${parsed.header.ki.toFixed(3)}, Kd ${parsed.header.kd.toFixed(3)} · Setpoint ${(parsed.header.setpointRad * DEG).toFixed(2)}°`
+  showRecordingSettings(parsed.header)
   $('sample-slider').max = Math.max(0, parsed.samples.length - 1)
   $('sample-slider').disabled = parsed.samples.length === 0
   $('playback').disabled = parsed.samples.length < 2
@@ -444,4 +445,45 @@ function openRecording(buffer, name) {
   chart('Encoder pulses', [['Motor 1', 'motor1EncoderPulses'], ['Motor 2', 'motor2EncoderPulses']], parsed.samples, true)
   setTimeWindow(0, recordingDuration())
   selectSample(0)
+}
+
+function showRecordingSettings(header) {
+  const target = $('recording-settings')
+  target.replaceChildren()
+  const settings = header.settingsAtStart
+  if (!settings) {
+    target.textContent = 'Metadata unavailable'
+    return
+  }
+  const rows = [
+    ['Firmware revision', header.firmwareRevision || 'unknown'],
+    ['Settings changed during recording', header.settingsChangedDuringRecording ? 'Yes' : 'No'],
+    ['PID gains (Kp / Ki / Kd)', `${settings.pidKp} / ${settings.pidKi} / ${settings.pidKd}`],
+    ['PID output limits', `${settings.pidOutputMin} to ${settings.pidOutputMax}`],
+    ['PID integral threshold', settings.pidIntegralThreshold],
+    ['Pitch setpoint', `${settings.pitchSetpointRad} rad`],
+    ['Pitch error min / max', `${settings.pitchErrorMinRad} / ${settings.pitchErrorMaxRad} rad`],
+    ['AUTO arm pitch error max', `${settings.autoArmMaxPitchErrorRad} rad`],
+    ['Filter gyro weight', settings.complementaryFilterGyroWeight],
+    ['Duty min / max', `${settings.dutyCycleMin} / ${settings.dutyCycleMax} PWM counts`],
+    ['Motor 1 speed slope / intercept', `${settings.motor1SpeedSlope} / ${settings.motor1SpeedIntercept}`],
+    ['Motor 2 speed slope / intercept', `${settings.motor2SpeedSlope} / ${settings.motor2SpeedIntercept}`],
+    ['Motor 1 / 2 direction inverted', `${settings.motor1DirectionInverted ? 'Yes' : 'No'} / ${settings.motor2DirectionInverted ? 'Yes' : 'No'}`],
+    ['Motor coast', settings.motorCoast ? 'Yes' : 'No'],
+    ['PWM frequency / resolution', `${settings.pwmFrequencyHz} Hz / ${settings.pwmResolutionBits} bits`],
+    ['Wheel diameter', `${settings.wheelDiameterM} m`],
+    ['Encoder pulses / revolution', settings.encoderPulsesPerRevolution],
+    ['IMU calibration valid at Start', settings.imuCalibrationValid ? 'Yes' : 'No'],
+    ['IMU gyro Y offset', settings.imuCalibrationValid ? `${settings.imuGyroYOffsetRadS} rad/s` : 'Unavailable'],
+    ['IMU pitch accel offset', settings.imuCalibrationValid ? `${settings.imuPitchAccelOffsetRad} rad` : 'Unavailable'],
+  ]
+  const list = document.createElement('dl')
+  for (const [label, value] of rows) {
+    const term = document.createElement('dt')
+    term.textContent = label
+    const description = document.createElement('dd')
+    description.textContent = String(value)
+    list.append(term, description)
+  }
+  target.append(list)
 }

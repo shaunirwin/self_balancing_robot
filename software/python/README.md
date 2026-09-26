@@ -29,7 +29,12 @@ To convert a downloaded `SBRPB1` `.sbrpb` recording to CSV, run
 `uv run decode_recording.py path/to/balance-recording.sbrpb`. The same command
 still accepts older `SBRLOG1` `.bin` files. Scripts can import
 `read_recording` from `recording_reader` to obtain the generated protobuf
-header and sample messages directly. The schema is in `../../proto/recording.proto`.
+header and samples. New headers expose `settings_at_start`,
+`firmware_revision`, and `settings_changed_during_recording`; check
+`header.HasField("settings_at_start")` before using the snapshot because older
+protobuf files omit it. Units and timing are described in
+[`proto/README.md`](../../proto/README.md).
+The schema is in `../../proto/recording.proto`.
 
 Run the wheel speed calibration script:
 

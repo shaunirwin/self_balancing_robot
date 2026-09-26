@@ -15,6 +15,26 @@ schema changes may use new field numbers without changing the major file
 version. Never reuse a removed field number; mark it `reserved`. Change the
 magic and major version if framing or existing field meanings change.
 
+New recordings include `settings_at_start`, captured when the control task
+processes Start. Older `SBRPB1` recordings omit it; readers should show
+"metadata unavailable" for those and for `SBRLOG1` files. The original
+header fields are retained for older protobuf readers. The snapshot holds PID
+gains, output limits and integral threshold; pitch setpoint and safety limits;
+complementary filter gyro weight; motor speed calibration slopes and intercepts,
+direction inversion and coast settings; PWM frequency in Hz and resolution in
+bits; wheel diameter in meters and encoder pulses per revolution; and IMU
+offsets in radians per second (gyro Y) and radians (accelerometer pitch).
+`imu_calibration_valid` is false if calibration had not finished at Start; in
+that case the offset numbers are zero placeholders. `firmware_revision` is the
+build Git revision, or `unknown` outside a Git checkout.
+
+`settings_changed_during_recording` becomes true when an accepted live tuning
+command actually changes a captured tunable value. It stays true if the value
+is later restored. It does not track control mode or motor outputs, which are
+stored per sample, or the completion of IMU calibration after Start. Thus a
+false value means no captured tunable was changed by a command during this
+recording; it does not turn the snapshot into a history of settings.
+
 The robot keeps its 32-byte `SBRLOG1` records in RAM and encodes `SBRPB1` only
 while downloading. `SBRLOG1` files remain readable by the dashboard and Python
 decoder.

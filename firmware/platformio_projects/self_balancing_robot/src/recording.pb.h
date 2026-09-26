@@ -17,6 +17,37 @@ typedef enum _sbr_recording_RecordingSample_ControlMode {
 } sbr_recording_RecordingSample_ControlMode;
 
 /* Struct definitions */
+/* Values captured when the control task processes Start. SI units unless noted. */
+typedef struct _sbr_recording_RecordingSettings {
+    float pid_kp;
+    float pid_ki;
+    float pid_kd;
+    float pid_output_min;
+    float pid_output_max;
+    float pid_integral_threshold;
+    float pitch_setpoint_rad;
+    float pitch_error_min_rad;
+    float pitch_error_max_rad;
+    float auto_arm_max_pitch_error_rad;
+    float complementary_filter_gyro_weight;
+    uint32_t duty_cycle_min;
+    uint32_t duty_cycle_max;
+    float motor1_speed_slope; /* Motor calibration: speed per PWM count. */
+    float motor1_speed_intercept; /* Motor calibration: speed at zero PWM. */
+    float motor2_speed_slope;
+    float motor2_speed_intercept;
+    bool motor1_direction_inverted;
+    bool motor2_direction_inverted;
+    bool motor_coast;
+    uint32_t pwm_frequency_hz;
+    uint32_t pwm_resolution_bits;
+    float wheel_diameter_m;
+    uint32_t encoder_pulses_per_revolution;
+    bool imu_calibration_valid;
+    float imu_gyro_y_offset_rad_s;
+    float imu_pitch_accel_offset_rad;
+} sbr_recording_RecordingSettings;
+
 /* SBRPB1 file: eight bytes "SBRPB1\0\0", then a varint-length-delimited
  RecordingHeader, followed by varint-length-delimited RecordingBatch messages.
  Batches are ordered, contiguous, and together contain record_count samples. */
@@ -33,6 +64,10 @@ typedef struct _sbr_recording_RecordingHeader {
     float pitch_error_max_rad;
     uint32_t duty_cycle_min;
     uint32_t duty_cycle_max;
+    bool has_settings_at_start;
+    sbr_recording_RecordingSettings settings_at_start; /* Absent in older SBRPB1 files. */
+    char firmware_revision[40]; /* Build Git revision, or "unknown". */
+    bool settings_changed_during_recording;
 } sbr_recording_RecordingHeader;
 
 typedef struct _sbr_recording_RecordingSample {
@@ -71,18 +106,48 @@ extern "C" {
 
 
 
+
 #define sbr_recording_RecordingSample_mode_ENUMTYPE sbr_recording_RecordingSample_ControlMode
 
 
 /* Initializer values for message structs */
-#define sbr_recording_RecordingHeader_init_default {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+#define sbr_recording_RecordingHeader_init_default {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, sbr_recording_RecordingSettings_init_default, "", 0}
+#define sbr_recording_RecordingSettings_init_default {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 #define sbr_recording_RecordingBatch_init_default {0, 0, {sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default, sbr_recording_RecordingSample_init_default}}
 #define sbr_recording_RecordingSample_init_default {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, _sbr_recording_RecordingSample_ControlMode_MIN, 0, 0, 0}
-#define sbr_recording_RecordingHeader_init_zero  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+#define sbr_recording_RecordingHeader_init_zero  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, sbr_recording_RecordingSettings_init_zero, "", 0}
+#define sbr_recording_RecordingSettings_init_zero {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 #define sbr_recording_RecordingBatch_init_zero   {0, 0, {sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero, sbr_recording_RecordingSample_init_zero}}
 #define sbr_recording_RecordingSample_init_zero  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, _sbr_recording_RecordingSample_ControlMode_MIN, 0, 0, 0}
 
 /* Field tags (for use in manual encoding/decoding) */
+#define sbr_recording_RecordingSettings_pid_kp_tag 1
+#define sbr_recording_RecordingSettings_pid_ki_tag 2
+#define sbr_recording_RecordingSettings_pid_kd_tag 3
+#define sbr_recording_RecordingSettings_pid_output_min_tag 4
+#define sbr_recording_RecordingSettings_pid_output_max_tag 5
+#define sbr_recording_RecordingSettings_pid_integral_threshold_tag 6
+#define sbr_recording_RecordingSettings_pitch_setpoint_rad_tag 7
+#define sbr_recording_RecordingSettings_pitch_error_min_rad_tag 8
+#define sbr_recording_RecordingSettings_pitch_error_max_rad_tag 9
+#define sbr_recording_RecordingSettings_auto_arm_max_pitch_error_rad_tag 10
+#define sbr_recording_RecordingSettings_complementary_filter_gyro_weight_tag 11
+#define sbr_recording_RecordingSettings_duty_cycle_min_tag 12
+#define sbr_recording_RecordingSettings_duty_cycle_max_tag 13
+#define sbr_recording_RecordingSettings_motor1_speed_slope_tag 14
+#define sbr_recording_RecordingSettings_motor1_speed_intercept_tag 15
+#define sbr_recording_RecordingSettings_motor2_speed_slope_tag 16
+#define sbr_recording_RecordingSettings_motor2_speed_intercept_tag 17
+#define sbr_recording_RecordingSettings_motor1_direction_inverted_tag 18
+#define sbr_recording_RecordingSettings_motor2_direction_inverted_tag 19
+#define sbr_recording_RecordingSettings_motor_coast_tag 20
+#define sbr_recording_RecordingSettings_pwm_frequency_hz_tag 21
+#define sbr_recording_RecordingSettings_pwm_resolution_bits_tag 22
+#define sbr_recording_RecordingSettings_wheel_diameter_m_tag 23
+#define sbr_recording_RecordingSettings_encoder_pulses_per_revolution_tag 24
+#define sbr_recording_RecordingSettings_imu_calibration_valid_tag 25
+#define sbr_recording_RecordingSettings_imu_gyro_y_offset_rad_s_tag 26
+#define sbr_recording_RecordingSettings_imu_pitch_accel_offset_rad_tag 27
 #define sbr_recording_RecordingHeader_format_version_tag 1
 #define sbr_recording_RecordingHeader_sample_rate_hz_tag 2
 #define sbr_recording_RecordingHeader_record_count_tag 3
@@ -95,6 +160,9 @@ extern "C" {
 #define sbr_recording_RecordingHeader_pitch_error_max_rad_tag 10
 #define sbr_recording_RecordingHeader_duty_cycle_min_tag 11
 #define sbr_recording_RecordingHeader_duty_cycle_max_tag 12
+#define sbr_recording_RecordingHeader_settings_at_start_tag 13
+#define sbr_recording_RecordingHeader_firmware_revision_tag 14
+#define sbr_recording_RecordingHeader_settings_changed_during_recording_tag 15
 #define sbr_recording_RecordingSample_elapsed_us_tag 1
 #define sbr_recording_RecordingSample_pitch_rad_tag 2
 #define sbr_recording_RecordingSample_gyro_rad_s_tag 3
@@ -126,9 +194,44 @@ X(a, STATIC,   SINGULAR, FLOAT,    pitch_setpoint_rad,   8) \
 X(a, STATIC,   SINGULAR, FLOAT,    pitch_error_min_rad,   9) \
 X(a, STATIC,   SINGULAR, FLOAT,    pitch_error_max_rad,  10) \
 X(a, STATIC,   SINGULAR, UINT32,   duty_cycle_min,   11) \
-X(a, STATIC,   SINGULAR, UINT32,   duty_cycle_max,   12)
+X(a, STATIC,   SINGULAR, UINT32,   duty_cycle_max,   12) \
+X(a, STATIC,   OPTIONAL, MESSAGE,  settings_at_start,  13) \
+X(a, STATIC,   SINGULAR, STRING,   firmware_revision,  14) \
+X(a, STATIC,   SINGULAR, BOOL,     settings_changed_during_recording,  15)
 #define sbr_recording_RecordingHeader_CALLBACK NULL
 #define sbr_recording_RecordingHeader_DEFAULT NULL
+#define sbr_recording_RecordingHeader_settings_at_start_MSGTYPE sbr_recording_RecordingSettings
+
+#define sbr_recording_RecordingSettings_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, FLOAT,    pid_kp,            1) \
+X(a, STATIC,   SINGULAR, FLOAT,    pid_ki,            2) \
+X(a, STATIC,   SINGULAR, FLOAT,    pid_kd,            3) \
+X(a, STATIC,   SINGULAR, FLOAT,    pid_output_min,    4) \
+X(a, STATIC,   SINGULAR, FLOAT,    pid_output_max,    5) \
+X(a, STATIC,   SINGULAR, FLOAT,    pid_integral_threshold,   6) \
+X(a, STATIC,   SINGULAR, FLOAT,    pitch_setpoint_rad,   7) \
+X(a, STATIC,   SINGULAR, FLOAT,    pitch_error_min_rad,   8) \
+X(a, STATIC,   SINGULAR, FLOAT,    pitch_error_max_rad,   9) \
+X(a, STATIC,   SINGULAR, FLOAT,    auto_arm_max_pitch_error_rad,  10) \
+X(a, STATIC,   SINGULAR, FLOAT,    complementary_filter_gyro_weight,  11) \
+X(a, STATIC,   SINGULAR, UINT32,   duty_cycle_min,   12) \
+X(a, STATIC,   SINGULAR, UINT32,   duty_cycle_max,   13) \
+X(a, STATIC,   SINGULAR, FLOAT,    motor1_speed_slope,  14) \
+X(a, STATIC,   SINGULAR, FLOAT,    motor1_speed_intercept,  15) \
+X(a, STATIC,   SINGULAR, FLOAT,    motor2_speed_slope,  16) \
+X(a, STATIC,   SINGULAR, FLOAT,    motor2_speed_intercept,  17) \
+X(a, STATIC,   SINGULAR, BOOL,     motor1_direction_inverted,  18) \
+X(a, STATIC,   SINGULAR, BOOL,     motor2_direction_inverted,  19) \
+X(a, STATIC,   SINGULAR, BOOL,     motor_coast,      20) \
+X(a, STATIC,   SINGULAR, UINT32,   pwm_frequency_hz,  21) \
+X(a, STATIC,   SINGULAR, UINT32,   pwm_resolution_bits,  22) \
+X(a, STATIC,   SINGULAR, FLOAT,    wheel_diameter_m,  23) \
+X(a, STATIC,   SINGULAR, UINT32,   encoder_pulses_per_revolution,  24) \
+X(a, STATIC,   SINGULAR, BOOL,     imu_calibration_valid,  25) \
+X(a, STATIC,   SINGULAR, FLOAT,    imu_gyro_y_offset_rad_s,  26) \
+X(a, STATIC,   SINGULAR, FLOAT,    imu_pitch_accel_offset_rad,  27)
+#define sbr_recording_RecordingSettings_CALLBACK NULL
+#define sbr_recording_RecordingSettings_DEFAULT NULL
 
 #define sbr_recording_RecordingBatch_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, UINT32,   first_index,       1) \
@@ -157,19 +260,22 @@ X(a, STATIC,   SINGULAR, BOOL,     motor2_forward_command,  15)
 #define sbr_recording_RecordingSample_DEFAULT NULL
 
 extern const pb_msgdesc_t sbr_recording_RecordingHeader_msg;
+extern const pb_msgdesc_t sbr_recording_RecordingSettings_msg;
 extern const pb_msgdesc_t sbr_recording_RecordingBatch_msg;
 extern const pb_msgdesc_t sbr_recording_RecordingSample_msg;
 
 /* Defines for backwards compatibility with code written before nanopb-0.4.0 */
 #define sbr_recording_RecordingHeader_fields &sbr_recording_RecordingHeader_msg
+#define sbr_recording_RecordingSettings_fields &sbr_recording_RecordingSettings_msg
 #define sbr_recording_RecordingBatch_fields &sbr_recording_RecordingBatch_msg
 #define sbr_recording_RecordingSample_fields &sbr_recording_RecordingSample_msg
 
 /* Maximum encoded size of messages (where known) */
 #define SBR_RECORDING_RECORDING_PB_H_MAX_SIZE    sbr_recording_RecordingBatch_size
 #define sbr_recording_RecordingBatch_size        1046
-#define sbr_recording_RecordingHeader_size       66
+#define sbr_recording_RecordingHeader_size       252
 #define sbr_recording_RecordingSample_size       63
+#define sbr_recording_RecordingSettings_size     140
 
 #ifdef __cplusplus
 } /* extern "C" */

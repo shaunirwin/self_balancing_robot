@@ -9,6 +9,9 @@
 PB_BIND(sbr_recording_RecordingHeader, sbr_recording_RecordingHeader, AUTO)
 
 
+PB_BIND(sbr_recording_RecordingSettings, sbr_recording_RecordingSettings, AUTO)
+
+
 PB_BIND(sbr_recording_RecordingBatch, sbr_recording_RecordingBatch, 2)
 
 
