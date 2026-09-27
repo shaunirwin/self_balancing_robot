@@ -35,11 +35,12 @@
             <div class="progress"><div id="progress-fill"></div></div><p id="recording-progress">Waiting for robot…</p>
             <div class="actions"><button id="start-recording" class="primary">Start</button><button id="stop-recording">Stop</button><button id="download-recording">Download & open</button></div>
             <p id="recording-message" class="message" role="status"></p>
-            <div class="file-picker"><label for="recording-file">Open local SBRLOG1 file</label><input id="recording-file" type="file" accept=".bin,application/octet-stream"></div>
+            <div class="file-picker"><label for="recording-file">Open local recording</label><input id="recording-file" type="file" accept=".sbrpb,.bin,application/x-protobuf,application/octet-stream"></div>
           </section>
         </div>
         <section class="panel analysis"><div class="section-head"><div><span class="eyebrow">ANALYSIS</span><h2>Recording viewer</h2></div><span id="file-name" class="filename">No file loaded</span></div>
           <p id="file-summary" class="hint">Open a local recording or download a completed capture.</p>
+          <details id="recording-details"><summary>Recording settings</summary><div id="recording-settings">Metadata unavailable</div></details>
           <div class="timeline"><label for="sample-slider">Selected sample <strong id="sample-label">—</strong></label><input id="sample-slider" type="range" min="0" max="0" value="0" disabled><button id="playback" disabled>Play</button><button id="live-view">Live view</button></div>
           <div class="chart-toolbar" aria-label="Chart navigation">
             <span id="time-window-label">Full recording</span>

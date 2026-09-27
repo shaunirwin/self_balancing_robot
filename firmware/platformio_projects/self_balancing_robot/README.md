@@ -192,11 +192,17 @@ curl -X POST "$ROBOT/recording/stop"
 The recording also stops when the buffer fills or AUTO disarms. Once the status reports `"state": "READY"`, download and decode it:
 
 ```bash
-curl -o balance-recording.bin "$ROBOT/recording/download"
-python3 ../../../software/python/decode_recording.py balance-recording.bin
+curl -o balance-recording.sbrpb "$ROBOT/recording/download?format=protobuf"
+../../../software/python/.venv/bin/python ../../../software/python/decode_recording.py balance-recording.sbrpb
 ```
 
-The decoder writes `balance-recording.csv`, which can be plotted or inspected with standard tools. Only one completed recording is retained; starting a new recording overwrites the previous one. Recordings are held in volatile RAM and are lost if the ESP32 resets or loses power.
+The decoder writes `balance-recording.csv`, which can be plotted or inspected with standard tools. Python scripts can call `recording_reader.read_recording(path)` to read the protobuf metadata and samples directly. The schema is in `../../../proto/recording.proto`. The robot keeps fixed 32-byte records in RAM and encodes protobuf in small batches only during download. The old `/recording/download` endpoint still serves `SBRLOG1` `.bin` files, which the decoder and dashboard can still read. Only one completed recording is retained; starting a new recording overwrites the previous one. Recordings are held in volatile RAM and are lost if the ESP32 resets or loses power.
+
+Protobuf headers also contain a settings snapshot taken when the control task
+processes Start, the build Git revision (or `unknown`), and a flag that turns
+true if a captured tunable is changed during recording. Calibration offsets
+are marked invalid if IMU calibration had not finished at Start. Field units
+and flag semantics are listed in `../../../proto/README.md`.
 
 The old `/logs` endpoint is deprecated and returns an error; use the `/recording/*` endpoints instead.
 

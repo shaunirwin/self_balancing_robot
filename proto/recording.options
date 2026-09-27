@@ -1,0 +1,2 @@
+sbr.recording.RecordingBatch.samples max_count:16
+sbr.recording.RecordingHeader.firmware_revision max_size:40
