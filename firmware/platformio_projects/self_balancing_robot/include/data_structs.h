@@ -5,7 +5,7 @@
 // #include <iomanip>
 #include <cmath>
 
-const int ESTIMATOR_FREQ = 100; //250;        // frequency to run state estimator at [Hz]
+constexpr int ESTIMATOR_FREQ = 150;  // control and state-estimation rate [Hz]
 const float WHEEL_DIAMETER = 0.0618;  // [m]
 const uint32_t ENCODER_PULSES_PER_REVOLUTION = 700*2;   // detects rising and falling edge of each pulse
 const float DISTANCE_PER_PULSE = M_PI * WHEEL_DIAMETER / ENCODER_PULSES_PER_REVOLUTION; 
